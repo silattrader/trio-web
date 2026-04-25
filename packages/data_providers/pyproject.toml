@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trio-data-providers"
+version = "0.1.0"
+description = "Live-data adapters for TRIO scoring engines (yfinance, i3investor, Bloomberg)"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.7",
+    "yfinance>=0.2.50",
+    "requests>=2.32",
+    "beautifulsoup4>=4.12",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "responses>=0.25"]
+
+[tool.setuptools.packages.find]
+include = ["trio_data_providers*"]
