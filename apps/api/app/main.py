@@ -35,6 +35,7 @@ from trio_data_providers import (
     MockPitProvider,
     PitProvider,
     ProviderError,
+    RetailFlowPitProvider,
     get_provider,
     list_providers,
 )
@@ -139,6 +140,13 @@ def _make_pit_provider() -> PitProvider:
     """
     import os
     choice = os.environ.get("TRIO_PIT_PROVIDER", "mock").lower()
+    if choice == "all":  # full stack: edgar + fmp + insider + retail
+        edgar = EdgarPitProvider()
+        return MergedPitProvider([
+            edgar, FmpPitProvider(),
+            InsiderFlowPitProvider(edgar_pit=edgar),
+            RetailFlowPitProvider(),
+        ])
     if choice == "edgar+fmp+insider":
         edgar = EdgarPitProvider()
         return MergedPitProvider([
@@ -155,6 +163,8 @@ def _make_pit_provider() -> PitProvider:
         return FmpPitProvider()
     if choice == "insider":
         return InsiderFlowPitProvider()
+    if choice == "retail":
+        return RetailFlowPitProvider()
     return MockPitProvider()
 
 
