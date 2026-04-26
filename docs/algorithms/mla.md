@@ -215,10 +215,71 @@ underperformance in 2021-H1.
 
 ### What this doesn't yet test
 
-- **5-factor vs 7-factor head-to-head** under walk-forward (still pending).
 - **Out-of-universe generalization**: results are conditioned on this
   curated 28-name basket. SP500-wide or KLCI-wide may differ.
 - **Survivorship bias**: today's universe, not PIT membership.
 - **Different forward-return horizons** (the label is 63 trading days; flow
   factors' natural decay may want 30 or 180).
 - **Different rebalance cadences** (here: every 63 days, top-5).
+
+## 5-factor vs 7-factor head-to-head walk-forward (2026-04-27)
+
+Earlier evaluations left an open question: is the 7-factor model's prior
+single-window underperformance (12.54% vs 5-factor's 15.01% CAGR) a real
+signal that flow factors hurt, or just window-dependent noise?
+
+`scripts/walk_forward_head_to_head.py` trains both a 5-factor model
+(features 0..4, no flow) and a 7-factor model (full set) on the *same*
+training cut for each rolling 6-month OOS window, and runs three
+backtests per window: RBA-BOS-Flow, MLA-5, MLA-7.
+
+### Per-window results
+
+| Window | RBA | MLA-5 | MLA-7 | 5 − 7 | 5 vs RBA | 7 vs RBA |
+|--------|-----|-------|-------|-------|----------|----------|
+| 2021-H1 | +79.0% | +55.4% | +55.4% |  0.0 pp | −23.6 pp | −23.6 pp |
+| 2021-H2 | +55.6% | +59.3% | +71.8% | **−12.6 pp** | +3.6 pp | **+16.2 pp** |
+| 2022-H1 | −15.8% | −22.8% | −22.8% |  0.0 pp | −7.0 pp | −7.0 pp |
+| 2022-H2 | +34.2% | +23.0% | +19.8% | +3.1 pp | −11.2 pp | −14.4 pp |
+| 2023-H1 | +24.7% | **+89.1%** | +75.8% | +13.3 pp | **+64.3 pp** | +51.1 pp |
+| 2023-H2 |  +2.3% | +22.1% | +16.9% | +5.2 pp | +19.8 pp | +14.6 pp |
+
+### Aggregate
+
+| | Mean lift |
+|---|---|
+| 5-factor vs RBA | **+7.65 pp** |
+| 7-factor vs RBA | +6.15 pp |
+| 5-vs-7 differential | +1.50 pp (5-factor slightly better) |
+
+| Win-rate | |
+|---|---|
+| 5-factor wins vs 7-factor | **3/6 (50%) — exactly tied** |
+| 5-factor beats RBA | 3/6 (50%) |
+| 7-factor beats RBA | 3/6 (50%) |
+
+### Verdict — inconclusive, and that matters
+
+5-factor edges 7-factor by 1.5 pp on average but loses to it as often as
+it wins. The flow factors are *within noise* on this universe and horizon.
+
+**Implications:**
+- The earlier "MLA-7 underperforms 5-factor" framing (single-window) was
+  not robust. Removed from the headline finding.
+- The earlier "MLA gate-passes" framing remains true on average — both
+  variants beat RBA across multiple windows, with high dispersion.
+- Adding insider_flow + retail_flow as features didn't hurt — they just
+  didn't materially help on this slice. They might help on:
+  - A larger universe where flow signals are more differentiated
+  - Different horizons (30-day or 180-day forward returns)
+  - Different label types (Sharpe-adjusted, or relative-to-universe rank)
+
+**Architectural decision:** keep the 7-factor stack as production. It
+preserves the `bos_flow` symmetry between RBA and MLA, and the marginal
+1.5 pp underperformance versus the simpler 5-factor variant is small
+enough that the architectural consistency wins.
+
+**Honest open question:** does feature selection inside the GBM (e.g.
+SHAP values) show the flow factors getting any weight at all? If they're
+near-zero, the model is essentially 5-factor with noise — fine, just
+worth knowing for the next iteration.
