@@ -120,6 +120,24 @@ export async function fetchUniverse(
   return res.json();
 }
 
+export interface CuratedUniverse {
+  id: string;
+  label: string;
+  snapshot: string;
+  coverage: "us" | "my";
+  n: number;
+  tickers: string[];
+}
+
+export async function fetchCuratedUniverses(): Promise<CuratedUniverse[]> {
+  const res = await fetch("/api/universes", withKeys({}));
+  if (!res.ok) {
+    throw new Error(`Universes ${res.status}: ${await res.text()}`);
+  }
+  const body = (await res.json()) as { universes: CuratedUniverse[] };
+  return body.universes;
+}
+
 export type StrategyId = "sma" | "rba_snapshot" | "rba_pit";
 
 export interface EquityPoint {

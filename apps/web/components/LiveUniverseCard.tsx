@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  fetchCuratedUniverses,
   fetchUniverse,
   score,
+  type CuratedUniverse,
   type ModelId,
   type ProviderId,
   type ScoreResponse,
@@ -29,9 +31,16 @@ export function LiveUniverseCard({ onResult }: Props) {
   const [model, setModel] = useState<ModelId>("bos");
   const [provider, setProvider] = useState<ProviderId>("yfinance");
   const [tickers, setTickers] = useState(PRESETS.yfinance);
+  const [curated, setCurated] = useState<CuratedUniverse[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetchCuratedUniverses()
+      .then(setCurated)
+      .catch(() => setCurated([]));
+  }, []);
 
   async function run() {
     const list = tickers
@@ -100,6 +109,33 @@ export function LiveUniverseCard({ onResult }: Props) {
           </select>
         </label>
       </div>
+
+      {curated.length > 0 && (
+        <div className="mt-4">
+          <span className="text-xs font-medium text-slate-700">Curated universes</span>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {curated.map((u) => (
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => {
+                  setTickers(u.tickers.join(", "));
+                  // Auto-pick a sensible provider for the universe.
+                  if (u.coverage === "us") setProvider("yfinance");
+                  if (u.coverage === "my") setProvider("i3investor");
+                }}
+                className="rounded-full border border-slate-300 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700 hover:border-trust hover:text-trust"
+                title={`${u.n} tickers, snapshot ${u.snapshot}, coverage: ${u.coverage.toUpperCase()}`}
+              >
+                {u.label}{" "}
+                <span className="ml-1 text-[10px] text-slate-400">
+                  ({u.n}) · {u.coverage}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <label className="mt-4 block text-sm">
         <span className="block font-medium text-slate-700">

@@ -29,6 +29,7 @@ from trio_backtester import (
 )
 from trio_backtester.data import fetch_history, fetch_volume_history
 from trio_data_providers import (
+    ALL_UNIVERSES,
     EdgarPitProvider,
     FmpPitProvider,
     InsiderFlowPitProvider,
@@ -167,6 +168,31 @@ class UniverseRequest(BaseModel):
 @app.get("/providers")
 def providers() -> dict:
     return {"providers": list_providers()}
+
+
+@app.get("/universes")
+def universes() -> dict:
+    """Curated equity universes the UI can prefill. Each entry carries the
+    full ticker list so the client can populate its textarea in one click.
+
+    Coverage indicator: "us" universes get full 7-factor PIT (when keys are
+    present); "my" universes get only the price-based factors today —
+    EDGAR/FMP don't cover Bursa, and English Wikipedia coverage of KLCI
+    names is patchy. See `docs/algorithms/universes.md`.
+    """
+    return {
+        "universes": [
+            {
+                "id": u.id,
+                "label": u.label,
+                "snapshot": u.snapshot,
+                "coverage": u.coverage,
+                "n": len(u.tickers),
+                "tickers": u.tickers,
+            }
+            for u in ALL_UNIVERSES.values()
+        ],
+    }
 
 
 StrategyName = Literal["sma", "rba_snapshot", "rba_pit"]
