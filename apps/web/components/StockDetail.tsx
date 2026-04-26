@@ -47,7 +47,8 @@ export function StockDetail({ stock, modelId, onClose }: Props) {
           </button>
         </div>
 
-        {modelId === "bos" && (
+        {(modelId === "bos" || modelId === "bos_flow" || modelId === "mla_v0") &&
+          stock.factors.length > 0 && (
           <div className="mt-6 rounded-md border border-slate-200 bg-slate-50 p-4">
             <FactorRadar factors={stock.factors} />
           </div>

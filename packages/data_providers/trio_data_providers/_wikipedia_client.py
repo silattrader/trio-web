@@ -42,7 +42,8 @@ class WikiError(RuntimeError):
 
 
 def _ua() -> str:
-    return os.environ.get("TRIO_WIKI_UA", DEFAULT_UA)
+    from ._request_keys import request_wiki_ua
+    return request_wiki_ua(DEFAULT_UA)
 
 
 def _headers() -> dict[str, str]:

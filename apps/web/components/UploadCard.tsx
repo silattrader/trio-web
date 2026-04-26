@@ -13,15 +13,18 @@ interface Props {
   ) => void;
 }
 
+// Sample data covers all 7 factors so it works in BOS, BOS-Flow, and MLA
+// without requiring any API keys. insider_flow / retail_flow values are
+// illustrative (1=strong sell signal, 5=strong buy signal).
 const SAMPLE_BOS: Record<string, unknown>[] = [
-  { ticker: "MAYBANK MK", name: "Malayan Banking Bhd", vol_avg_3m: 2_000_000, target_return: 18, dvd_yld_ind: 6.4, altman_z: 3.1, analyst_sent: 4.4 },
-  { ticker: "TENAGA MK",  name: "Tenaga Nasional",     vol_avg_3m: 800_000,   target_return: 12, dvd_yld_ind: 4.1, altman_z: 2.3, analyst_sent: 4.0 },
-  { ticker: "AIRASIA MK", name: "AirAsia Group",       vol_avg_3m: 350_000,   target_return: -8, dvd_yld_ind: 0,   altman_z: 0.8, analyst_sent: 2.5 },
-  { ticker: "GENM MK",    name: "Genting Malaysia",    vol_avg_3m: 500_000,   target_return: 5,  dvd_yld_ind: 3.2, altman_z: 1.6, analyst_sent: 3.4 },
-  { ticker: "PCHEM MK",   name: "PETRONAS Chemicals",  vol_avg_3m: 1_100_000, target_return: 22, dvd_yld_ind: 5.0, altman_z: 4.2, analyst_sent: 4.5 },
-  { ticker: "PBBANK MK",  name: "Public Bank",         vol_avg_3m: 1_400_000, target_return: 15, dvd_yld_ind: 4.5, altman_z: 2.7, analyst_sent: 4.3 },
-  { ticker: "AMMB MK",    name: "AMMB Holdings",       vol_avg_3m: 280_000,   target_return: -2, dvd_yld_ind: 3.0, altman_z: 1.4, analyst_sent: 2.9 },
-  { ticker: "SIME MK",    name: "Sime Darby",          vol_avg_3m: 600_000,   target_return: 10, dvd_yld_ind: 4.2, altman_z: 2.1, analyst_sent: 3.8 },
+  { ticker: "MAYBANK MK", name: "Malayan Banking Bhd", vol_avg_3m: 2_000_000, target_return: 18, dvd_yld_ind: 6.4, altman_z: 3.1, analyst_sent: 4.4, insider_flow: 4, retail_flow: 3 },
+  { ticker: "TENAGA MK",  name: "Tenaga Nasional",     vol_avg_3m: 800_000,   target_return: 12, dvd_yld_ind: 4.1, altman_z: 2.3, analyst_sent: 4.0, insider_flow: 3, retail_flow: 3 },
+  { ticker: "AIRASIA MK", name: "AirAsia Group",       vol_avg_3m: 350_000,   target_return: -8, dvd_yld_ind: 0,   altman_z: 0.8, analyst_sent: 2.5, insider_flow: 2, retail_flow: 2 },
+  { ticker: "GENM MK",    name: "Genting Malaysia",    vol_avg_3m: 500_000,   target_return: 5,  dvd_yld_ind: 3.2, altman_z: 1.6, analyst_sent: 3.4, insider_flow: 3, retail_flow: 3 },
+  { ticker: "PCHEM MK",   name: "PETRONAS Chemicals",  vol_avg_3m: 1_100_000, target_return: 22, dvd_yld_ind: 5.0, altman_z: 4.2, analyst_sent: 4.5, insider_flow: 5, retail_flow: 3 },
+  { ticker: "PBBANK MK",  name: "Public Bank",         vol_avg_3m: 1_400_000, target_return: 15, dvd_yld_ind: 4.5, altman_z: 2.7, analyst_sent: 4.3, insider_flow: 4, retail_flow: 4 },
+  { ticker: "AMMB MK",    name: "AMMB Holdings",       vol_avg_3m: 280_000,   target_return: -2, dvd_yld_ind: 3.0, altman_z: 1.4, analyst_sent: 2.9, insider_flow: 2, retail_flow: 3 },
+  { ticker: "SIME MK",    name: "Sime Darby",          vol_avg_3m: 600_000,   target_return: 10, dvd_yld_ind: 4.2, altman_z: 2.1, analyst_sent: 3.8, insider_flow: 3, retail_flow: 3 },
 ];
 
 export function UploadCard({ onResult }: Props) {
@@ -100,11 +103,15 @@ export function UploadCard({ onResult }: Props) {
         <button
           type="button"
           onClick={() => runScore(SAMPLE_BOS)}
-          disabled={busy || model !== "bos"}
+          disabled={busy || (model !== "bos" && model !== "bos_flow" && model !== "mla_v0")}
           className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          title={model !== "bos" ? "Sample data is BOS-only" : "Use built-in 8-stock KLCI sample"}
+          title={
+            model === "mos" || model === "four_factor"
+              ? "Sample is BOS / BOS-Flow / MLA only — switch model"
+              : "Use built-in 8-stock KLCI sample (covers all 7 factors)"
+          }
         >
-          Try sample (BOS)
+          Try sample
         </button>
         {filename && <span className="text-xs text-slate-500">{filename}</span>}
       </div>

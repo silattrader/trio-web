@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from pydantic import BaseModel, Field
@@ -40,6 +40,11 @@ from trio_data_providers import (
     get_provider,
     list_providers,
 )
+from trio_data_providers._request_keys import (
+    RequestKeys,
+    set_request_keys,
+    reset_request_keys,
+)
 
 ModelName = Literal["bos", "bos_flow", "mos", "four_factor", "mla_v0"]
 
@@ -57,9 +62,62 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def byok_middleware(request, call_next):
+    """Read user-supplied API keys from request headers and bind them to
+    the contextvars that low-level provider clients consult.
+
+    Headers (all optional):
+      X-TRIO-SEC-UA   — SEC EDGAR contact email
+      X-TRIO-FMP-KEY  — Financial Modeling Prep API key
+      X-TRIO-WIKI-UA  — Wikimedia contact email
+
+    When absent, providers fall back to TRIO_*_KEY env vars on the host.
+    """
+    set_request_keys(RequestKeys(
+        sec_ua=request.headers.get("X-TRIO-SEC-UA"),
+        fmp_key=request.headers.get("X-TRIO-FMP-KEY"),
+        wiki_ua=request.headers.get("X-TRIO-WIKI-UA"),
+    ))
+    try:
+        response = await call_next(request)
+    finally:
+        reset_request_keys()
+    return response
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/byok/status")
+def byok_status(request: Request) -> dict:
+    """Tell the client which BYOK keys arrived on this request. Used by the
+    Settings UI to show 'live mode active' vs 'demo mode' badges. Never
+    returns the key itself — only a boolean per slot."""
+    h = request.headers
+    sec = bool(h.get("X-TRIO-SEC-UA"))
+    fmp = bool(h.get("X-TRIO-FMP-KEY"))
+    wiki = bool(h.get("X-TRIO-WIKI-UA"))
+    has_any = sec or fmp or wiki
+    return {
+        "live_mode": has_any,
+        "providers": {
+            "sec_edgar": sec,
+            "financial_modeling_prep": fmp,
+            "wikipedia": wiki,
+        },
+        "coverage": {
+            "altman_z": sec,
+            "dvd_yld_ind": sec,
+            "vol_avg_3m": True,            # yfinance — no key needed
+            "target_return": fmp,
+            "analyst_sent": fmp,
+            "insider_flow": sec,           # Form 4 via EDGAR
+            "retail_flow": wiki,
+        },
+    }
 
 
 @app.get("/models")

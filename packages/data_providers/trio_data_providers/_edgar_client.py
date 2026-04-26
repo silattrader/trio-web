@@ -33,7 +33,8 @@ class EdgarError(RuntimeError):
 
 
 def _ua() -> str:
-    return os.environ.get("TRIO_SEC_UA", DEFAULT_UA)
+    from ._request_keys import request_sec_ua
+    return request_sec_ua(DEFAULT_UA)
 
 
 def _headers() -> dict[str, str]:

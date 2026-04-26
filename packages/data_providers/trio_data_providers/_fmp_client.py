@@ -35,10 +35,12 @@ class FmpError(RuntimeError):
 
 
 def _key() -> str:
-    k = os.environ.get("TRIO_FMP_KEY", "").strip()
+    from ._request_keys import request_fmp_key
+    k = request_fmp_key()
     if not k:
         raise FmpError(
-            "TRIO_FMP_KEY env not set. Get a free key at "
+            "FMP key not set. Either set TRIO_FMP_KEY env, or paste a key "
+            "in the Settings panel (BYOK mode). Get a free key at "
             "https://site.financialmodelingprep.com/developer/docs"
         )
     return k

@@ -7,6 +7,7 @@ import { LiveUniverseCard } from "@/components/LiveUniverseCard";
 import { ResultsTable } from "@/components/ResultsTable";
 import { StockDetail } from "@/components/StockDetail";
 import { BacktestCard, type BacktestCardHandle } from "@/components/BacktestCard";
+import { BYOKBanner } from "@/components/BYOKBanner";
 import { WeightSliders } from "@/components/WeightSliders";
 
 export default function Home() {
@@ -32,6 +33,7 @@ export default function Home() {
 
   return (
     <div className="space-y-8">
+      <BYOKBanner />
       <div className="grid gap-6 lg:grid-cols-2">
         <UploadCard onResult={handleResult} />
         <LiveUniverseCard onResult={handleResult} />

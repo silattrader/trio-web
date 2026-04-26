@@ -1,5 +1,19 @@
 // Mirror of packages/algorithms/trio_algorithms/contracts.py — keep in sync.
 
+import { keyHeaders } from "./keys";
+
+/** Inject BYOK headers into a fetch init. */
+function withKeys(init: RequestInit = {}): RequestInit {
+  const userHeaders = keyHeaders();
+  return {
+    ...init,
+    headers: {
+      ...(init.headers as Record<string, string> | undefined),
+      ...userHeaders,
+    },
+  };
+}
+
 export type Recommendation =
   | "BUY-BUY"
   | "BUY"
@@ -94,11 +108,11 @@ export async function fetchUniverse(
   tickers: string[],
   model: ModelId
 ): Promise<UniverseResponse> {
-  const res = await fetch(`/api/universe/${provider}?model=${model}`, {
+  const res = await fetch(`/api/universe/${provider}?model=${model}`, withKeys({
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ tickers }),
-  });
+  }));
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Provider ${provider} ${res.status}: ${text}`);
@@ -151,11 +165,11 @@ export async function backtest(
   strategy: StrategyId,
   body: BacktestRequest
 ): Promise<BacktestResponse> {
-  const res = await fetch(`/api/backtest?strategy=${strategy}`, {
+  const res = await fetch(`/api/backtest?strategy=${strategy}`, withKeys({
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
-  });
+  }));
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Backtest ${res.status}: ${text}`);
@@ -198,11 +212,11 @@ export async function walkForward(
 ): Promise<WalkForwardResponse> {
   const res = await fetch(
     `/api/backtest/walk_forward?strategy=${strategy}&n_windows=${nWindows}`,
-    {
+    withKeys({
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
-    }
+    })
   );
   if (!res.ok) {
     const text = await res.text();
@@ -229,11 +243,11 @@ export async function score(
   if (opts.bosFlowWeights && model === "bos_flow")
     body.bos_flow_weights = opts.bosFlowWeights;
 
-  const res = await fetch(`/api/score?${qs.toString()}`, {
+  const res = await fetch(`/api/score?${qs.toString()}`, withKeys({
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
-  });
+  }));
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`API ${res.status}: ${text}`);
