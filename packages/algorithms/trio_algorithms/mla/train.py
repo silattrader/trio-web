@@ -82,15 +82,77 @@ def train(n_samples: int = DEFAULT_N, seed: int = DEFAULT_SEED) -> MlaScorer:
     return MlaScorer(model=model, meta=meta)
 
 
+def train_real_pit(
+    *,
+    cache_path: Path | None = None,
+    seed: int = DEFAULT_SEED,
+) -> tuple[MlaScorer, dict]:
+    """Train on real EDGAR-PIT factors → realised forward returns.
+
+    Returns (scorer, info-dict). The scorer's TrainingMeta carries the
+    train r2 vs forward returns; the info-dict carries n_kept, n_dropped,
+    feature coverage, and the date range — useful for the README + UI.
+
+    Network-heavy on cold cache; cache the dataset via `cache_path`.
+    """
+    from .data_pipeline import build_pit_dataset, to_xy
+
+    samples = build_pit_dataset(cache_path=cache_path)
+    X, y, kept = to_xy(samples)
+    if len(X) < 50:
+        raise RuntimeError(
+            f"Only {len(X)} usable samples after filtering — cannot train. "
+            "Likely an EDGAR coverage issue (too many altman_z=None)."
+        )
+
+    model = GradientBoostingRegressor(
+        n_estimators=200, max_depth=3, learning_rate=0.05, random_state=seed,
+    )
+    model.fit(X, y)
+    preds = model.predict(X)
+    train_r2 = float(r2_score(y, preds))
+
+    # No analytic RBA correlation here — y is a forward return, not a BOS
+    # score. Surface a different signal: directional hit rate (preds and
+    # actuals have the same sign).
+    sign_hit = float(np.mean(np.sign(preds) == np.sign(y)))
+
+    meta = TrainingMeta(
+        n_samples=len(X), train_r2=train_r2, rba_corr=sign_hit,
+    )
+    info = {
+        "n_kept": len(X),
+        "n_dropped": len(samples) - len(X),
+        "tickers": sorted({s.ticker for s in kept}),
+        "date_range": (
+            min(s.as_of for s in kept).isoformat() if kept else None,
+            max(s.as_of for s in kept).isoformat() if kept else None,
+        ),
+        "directional_hit_rate": sign_hit,
+    }
+    return MlaScorer(model=model, meta=meta), info
+
+
 def main() -> None:  # pragma: no cover (CLI)
     p = argparse.ArgumentParser()
     p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--real", action="store_true",
+                   help="Train on real EDGAR-PIT factors (network-heavy first run)")
+    p.add_argument("--cache", type=Path, default=None,
+                   help="Cache the materialised dataset to this path")
     p.add_argument("--n", type=int, default=DEFAULT_N)
     p.add_argument("--seed", type=int, default=DEFAULT_SEED)
     args = p.parse_args()
-    scorer = train(args.n, args.seed)
-    scorer.save(args.out)
-    print(f"Wrote {args.out}  ·  r2={scorer.meta.train_r2:.3f}  rba_corr={scorer.meta.rba_corr:.3f}")
+    if args.real:
+        scorer, info = train_real_pit(cache_path=args.cache, seed=args.seed)
+        scorer.save(args.out)
+        print(f"Wrote {args.out}  ·  r2={scorer.meta.train_r2:.3f}  hit_rate={scorer.meta.rba_corr:.3f}")
+        print(f"  samples kept: {info['n_kept']}  dropped: {info['n_dropped']}")
+        print(f"  tickers: {len(info['tickers'])}  range: {info['date_range']}")
+    else:
+        scorer = train(args.n, args.seed)
+        scorer.save(args.out)
+        print(f"Wrote {args.out}  ·  r2={scorer.meta.train_r2:.3f}  rba_corr={scorer.meta.rba_corr:.3f}")
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -37,6 +37,14 @@ _FACTOR_LABELS = {
     "analyst_sent": "Analyst Sentiment",
 }
 
+# Forward-looking factors that aren't in XBRL filings. When PIT data is
+# the input, these will be missing — score_mla_v0 substitutes the same
+# placeholders the training pipeline uses so inference matches training.
+_PIT_PLACEHOLDERS: dict[str, float] = {
+    "target_return": 0.0,
+    "analyst_sent": 3.0,
+}
+
 _cached: MlaScorer | None = None
 _cache_path: Path | None = None
 
@@ -80,7 +88,15 @@ def score_mla_v0(
     results: list[StockResult] = []
     raw_scores: list[float | None] = []
     for row in rows:
-        score = scorer.score_row(row)
+        # Fill in placeholders for forward-looking factors when missing
+        # (PIT path); pass through untouched otherwise.
+        scoring_row = dict(row)
+        used_placeholders: list[str] = []
+        for k, default in _PIT_PLACEHOLDERS.items():
+            if scoring_row.get(k) is None:
+                scoring_row[k] = default
+                used_placeholders.append(k)
+        score = scorer.score_row(scoring_row)
         raw_scores.append(score)
         # Per-factor breakdown — band/contribution computed against feature
         # importance for transparency. We don't claim per-factor weights are

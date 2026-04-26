@@ -44,11 +44,11 @@ def evaluate_promotion(
     sharpe_ok = sharpe_lift >= min_sharpe_lift
     reasons.append(
         f"CAGR lift {cagr_lift:+.2%} {'>=' if cagr_ok else '<'} "
-        f"threshold {min_cagr_lift:+.2%} → {'PASS' if cagr_ok else 'FAIL'}"
+        f"threshold {min_cagr_lift:+.2%} -> {'PASS' if cagr_ok else 'FAIL'}"
     )
     reasons.append(
         f"Sharpe lift {sharpe_lift:+.2f} {'>=' if sharpe_ok else '<'} "
-        f"threshold {min_sharpe_lift:+.2f} → {'PASS' if sharpe_ok else 'FAIL'}"
+        f"threshold {min_sharpe_lift:+.2f} -> {'PASS' if sharpe_ok else 'FAIL'}"
     )
 
     promote = cagr_ok and sharpe_ok
