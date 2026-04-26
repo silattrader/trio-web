@@ -1,0 +1,47 @@
+# Render blueprint for the TRIO API.
+#
+# Deploy: 1. Sign in at render.com → New → Blueprint
+#         2. Connect github.com/silattrader/trio-web
+#         3. Render auto-detects this file and provisions the service
+#         4. Set TRIO_SEC_UA in the dashboard (recommended — see below)
+#         5. Once green, copy the service URL into Vercel's
+#            NEXT_PUBLIC_API_URL env var.
+#
+# Free tier specs:
+# - 512 MB RAM, 0.1 CPU, sleeps after 15 min idle (~30s cold-start on wake)
+# - Adequate for a portfolio demo; bump to Starter ($7/mo) if cold-starts
+#   hurt your conversion.
+#
+# Env vars:
+# - TRIO_SEC_UA   — recommended fallback when browsers don't supply BYOK
+#                   keys; SEC will hard-rate-limit empty user-agents.
+# - TRIO_FMP_KEY  — optional. Without it, anonymous browsers can't trigger
+#                   FMP-backed live calls. With it, the host eats the
+#                   FMP rate limit for everyone.
+# - TRIO_WIKI_UA  — recommended fallback (Wikimedia rate-limits empty UA).
+
+services:
+  - type: web
+    name: trio-api
+    runtime: python
+    plan: free
+    region: singapore       # change to oregon / frankfurt as you prefer
+    pythonVersion: "3.12"
+    rootDir: .
+    buildCommand: |
+      pip install --upgrade pip &&
+      pip install -e packages/algorithms &&
+      pip install -e packages/data_providers &&
+      pip install -e packages/backtester &&
+      pip install -e apps/api
+    startCommand: cd apps/api && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: TRIO_SEC_UA
+        sync: false                    # set in dashboard
+      - key: TRIO_WIKI_UA
+        sync: false                    # set in dashboard
+      - key: TRIO_FMP_KEY
+        sync: false                    # optional, set if you want anonymous live demo
+      - key: PYTHONUNBUFFERED
+        value: "1"
