@@ -1,7 +1,9 @@
-# SOP — Backtester (P4)
+# SOP — Backtester (P4 + walk-forward)
 
 **Source of truth:** `packages/backtester/trio_backtester/`
-**Endpoint:** `POST /backtest?strategy={sma|rba_snapshot}`
+**Endpoints:**
+- `POST /backtest?strategy={sma|rba_snapshot}` — single equity curve.
+- `POST /backtest/walk_forward?strategy=...&n_windows=N` — N non-overlapping sub-runs + aggregate.
 
 ## North star
 
@@ -32,6 +34,24 @@ Survivorship bias too — bankrupt tickers don't appear in today's snapshot.
 
 Inputs: `model` (default `bos`), `top_n` (default 3), `rebalance_days`
 (default 21), `fee_bps`.
+
+## Walk-forward
+
+`run_walk_forward(req, strategy, n_windows=N, history=, dates=, score_fn=)`
+splits `dates` into N contiguous, near-equal slices (first `n % k` slices get
+one extra day; slices with <2 days are dropped) and runs the chosen strategy
+on each. Pure function — re-uses `run_backtest` per slice; no new fetches.
+
+Aggregate fields:
+- `mean_sharpe` — average of per-window Sharpes
+- `median_total_return` — robust to one-window outliers
+- `total_return_std` — sample stdev across windows; high = regime-dependent
+- `pct_windows_beating_benchmark` — strategy `total_return` > B&H per window
+- `pct_windows_positive` — windows with `total_return > 0`
+
+Use this before believing any single equity curve. A strategy with one good
+2020-2021 leg and four flat years has a misleading aggregate metric; the
+per-window table makes that obvious.
 
 ### Path 3 — point-in-time fundamentals (deferred)
 

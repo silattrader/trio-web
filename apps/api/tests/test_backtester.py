@@ -7,7 +7,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from trio_backtester import BacktestRequest, run_backtest
+from trio_backtester import BacktestRequest, run_backtest, run_walk_forward
+from trio_backtester.walk_forward import _split_indices, _stdev, _median
 from trio_backtester.metrics import (
     cagr,
     daily_returns,
@@ -180,6 +181,75 @@ def test_backtest_endpoint_rejects_inverted_dates():
         json={"tickers": ["AAPL"], "start": "2024-01-01", "end": "2023-01-01"},
     )
     assert body.status_code == 400
+
+
+# ----------------------------- walk-forward ------------------------------
+
+
+def test_split_indices_balanced():
+    # 10 days into 4 windows → 3,3,2,2
+    out = _split_indices(10, 4)
+    sizes = [hi - lo for lo, hi in out]
+    assert sizes == [3, 3, 2, 2]
+    # Contiguous + covers full range.
+    assert out[0][0] == 0 and out[-1][1] == 10
+
+
+def test_split_indices_drops_too_small_windows():
+    # 5 days into 4 → 2,1,1,1; only the first slice survives the >=2 filter.
+    out = _split_indices(5, 4)
+    assert all(hi - lo >= 2 for lo, hi in out)
+    assert len(out) == 1
+
+
+def test_median_and_stdev_helpers():
+    assert _median([1.0, 2.0, 3.0]) == 2.0
+    assert _median([1.0, 2.0, 3.0, 4.0]) == 2.5
+    assert _median([]) == 0.0
+    assert _stdev([1.0]) == 0.0
+    # 1, 2, 3 → mean 2, var = (1+0+1)/2 = 1
+    assert _stdev([1.0, 2.0, 3.0]) == pytest.approx(1.0)
+
+
+def test_walk_forward_sma_uptrend_aggregate():
+    dates, hist = _trending_history(date(2020, 1, 1), 260)
+    req = BacktestRequest(
+        tickers=["AAA"], start=dates[0], end=dates[-1],
+        fast=10, slow=30, fee_bps=0,
+    )
+    resp = run_walk_forward(
+        req, "sma", n_windows=4, history=hist, dates=dates,
+    )
+    assert resp.aggregate.n_windows == 4
+    assert len(resp.windows) == 4
+    # Steady uptrend → every sub-window is positive once SMA arms.
+    assert resp.aggregate.pct_windows_positive >= 0.5
+    # Indices are 0..3 and dates are non-overlapping & ordered.
+    assert [w.index for w in resp.windows] == [0, 1, 2, 3]
+    for prev, curr in zip(resp.windows, resp.windows[1:]):
+        assert prev.end < curr.start
+
+
+def test_walk_forward_rejects_n_windows_lt_2():
+    dates, hist = _trending_history(date(2020, 1, 1), 100)
+    req = BacktestRequest(tickers=["AAA"], start=dates[0], end=dates[-1])
+    with pytest.raises(ValueError):
+        run_walk_forward(req, "sma", n_windows=1, history=hist, dates=dates)
+
+
+def test_walk_forward_endpoint_sma_with_mocked_history(monkeypatch):
+    dates, hist = _trending_history(date(2022, 1, 3), 260)
+    monkeypatch.setattr("app.main.fetch_history", lambda t, s, e: (dates, hist))
+    body = client.post(
+        "/backtest/walk_forward?strategy=sma&n_windows=4",
+        json={
+            "tickers": ["AAA"], "start": "2022-01-03", "end": "2023-01-03",
+            "fast": 10, "slow": 30, "fee_bps": 0,
+        },
+    ).json()
+    assert body["aggregate"]["n_windows"] == 4
+    assert len(body["windows"]) == 4
+    assert "pct_windows_beating_benchmark" in body["aggregate"]
 
 
 def test_backtest_endpoint_sma_with_mocked_history(monkeypatch):

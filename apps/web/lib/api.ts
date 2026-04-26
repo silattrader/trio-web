@@ -143,6 +143,54 @@ export async function backtest(
   return res.json();
 }
 
+export interface WalkForwardWindow {
+  index: number;
+  start: string;
+  end: string;
+  metrics: BacktestMetrics;
+  benchmark_metrics: BacktestMetrics | null;
+  beat_benchmark: boolean;
+}
+
+export interface WalkForwardAggregate {
+  n_windows: number;
+  mean_sharpe: number;
+  median_total_return: number;
+  total_return_std: number;
+  pct_windows_beating_benchmark: number;
+  pct_windows_positive: number;
+}
+
+export interface WalkForwardResponse {
+  strategy: StrategyId;
+  universe_size: number;
+  start: string;
+  end: string;
+  windows: WalkForwardWindow[];
+  aggregate: WalkForwardAggregate;
+  warnings: string[];
+}
+
+export async function walkForward(
+  strategy: StrategyId,
+  nWindows: number,
+  body: BacktestRequest
+): Promise<WalkForwardResponse> {
+  const res = await fetch(
+    `/api/backtest/walk_forward?strategy=${strategy}&n_windows=${nWindows}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Walk-forward ${res.status}: ${text}`);
+  }
+  return res.json();
+}
+
 export async function score(
   model: ModelId,
   universe: string,

@@ -8,6 +8,7 @@ __pycache__/
 .env.local
 node_modules/
 .next/
+*.tsbuildinfo
 dist/
 build/
 *.log

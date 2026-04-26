@@ -53,3 +53,38 @@ class BacktestResponse(BaseModel):
     metrics: Metrics
     benchmark_metrics: Metrics | None = None
     warnings: list[str]
+
+
+# --- Walk-forward ---------------------------------------------------------
+
+
+class WalkForwardWindow(BaseModel):
+    """Per-window slice metrics. Beat-benchmark = strategy total return > benchmark."""
+
+    index: int
+    start: date
+    end: date
+    metrics: Metrics
+    benchmark_metrics: Metrics | None = None
+    beat_benchmark: bool
+
+
+class WalkForwardAggregate(BaseModel):
+    """Cross-window summary — the actual signal that the engine isn't lucky."""
+
+    n_windows: int
+    mean_sharpe: float
+    median_total_return: float
+    total_return_std: float
+    pct_windows_beating_benchmark: float
+    pct_windows_positive: float
+
+
+class WalkForwardResponse(BaseModel):
+    strategy: StrategyId
+    universe_size: int
+    start: date
+    end: date
+    windows: list[WalkForwardWindow]
+    aggregate: WalkForwardAggregate
+    warnings: list[str]

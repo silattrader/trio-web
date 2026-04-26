@@ -18,7 +18,13 @@ from trio_algorithms import (
     score_four_factor,
     score_mos,
 )
-from trio_backtester import BacktestRequest, BacktestResponse, run_backtest
+from trio_backtester import (
+    BacktestRequest,
+    BacktestResponse,
+    WalkForwardResponse,
+    run_backtest,
+    run_walk_forward,
+)
 from trio_backtester.data import fetch_history
 from trio_data_providers import ProviderError, get_provider, list_providers
 
@@ -121,6 +127,33 @@ def backtest(
 
     score_fn = _score_for_backtest if strategy == "rba_snapshot" else None
     return run_backtest(req, strategy, history=history, dates=dates, score_fn=score_fn)
+
+
+@app.post("/backtest/walk_forward", response_model=WalkForwardResponse)
+def backtest_walk_forward(
+    req: BacktestRequest,
+    strategy: StrategyName = Query("sma"),
+    n_windows: int = Query(4, ge=2, le=12),
+) -> WalkForwardResponse:
+    """Split [start, end] into N non-overlapping windows; run the strategy on
+    each. Surfaces consistency, not a single lucky equity curve."""
+    if req.end <= req.start:
+        raise HTTPException(status_code=400, detail="end must be after start")
+
+    try:
+        dates, history = fetch_history(req.tickers, req.start, req.end)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"price-history fetch failed: {e}") from e
+
+    if not dates:
+        raise HTTPException(status_code=502, detail="no price history returned for these tickers/dates")
+
+    score_fn = _score_for_backtest if strategy == "rba_snapshot" else None
+    return run_walk_forward(
+        req, strategy,
+        n_windows=n_windows,
+        history=history, dates=dates, score_fn=score_fn,
+    )
 
 
 @app.post("/universe/{provider_name}")

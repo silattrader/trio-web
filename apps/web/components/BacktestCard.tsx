@@ -13,9 +13,11 @@ import {
 } from "recharts";
 import {
   backtest,
+  walkForward,
   type BacktestResponse,
   type ModelId,
   type StrategyId,
+  type WalkForwardResponse,
 } from "@/lib/api";
 
 const STRATEGIES: { id: StrategyId; label: string; blurb: string }[] = [
@@ -49,6 +51,9 @@ export const BacktestCard = forwardRef<BacktestCardHandle, object>(function Back
 
   const [busy, setBusy] = useState(false);
   const [resp, setResp] = useState<BacktestResponse | null>(null);
+  const [wfResp, setWfResp] = useState<WalkForwardResponse | null>(null);
+  const [walkForwardOn, setWalkForwardOn] = useState(false);
+  const [nWindows, setNWindows] = useState(4);
   const [error, setError] = useState<string | null>(null);
   const cardRef = useRef<HTMLElement>(null);
 
@@ -63,6 +68,7 @@ export const BacktestCard = forwardRef<BacktestCardHandle, object>(function Back
 
   useEffect(() => {
     setResp(null);
+    setWfResp(null);
   }, [strategy, model]);
 
   async function run() {
@@ -73,19 +79,27 @@ export const BacktestCard = forwardRef<BacktestCardHandle, object>(function Back
     }
     setBusy(true);
     setError(null);
+    const body = {
+      tickers: list,
+      start,
+      end,
+      fast,
+      slow,
+      model,
+      top_n: topN,
+      rebalance_days: rebal,
+      fee_bps: feeBps,
+    };
     try {
-      const r = await backtest(strategy, {
-        tickers: list,
-        start,
-        end,
-        fast,
-        slow,
-        model,
-        top_n: topN,
-        rebalance_days: rebal,
-        fee_bps: feeBps,
-      });
-      setResp(r);
+      if (walkForwardOn) {
+        const w = await walkForward(strategy, nWindows, body);
+        setWfResp(w);
+        setResp(null);
+      } else {
+        const r = await backtest(strategy, body);
+        setResp(r);
+        setWfResp(null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -174,6 +188,34 @@ export const BacktestCard = forwardRef<BacktestCardHandle, object>(function Back
         </div>
       )}
 
+      <div className="mt-4 flex flex-wrap items-center gap-4 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+        <label className="inline-flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={walkForwardOn}
+            onChange={(e) => setWalkForwardOn(e.target.checked)}
+            className="h-4 w-4 accent-trust"
+          />
+          <span className="font-medium text-slate-700">Walk-forward</span>
+          <span className="text-xs text-slate-500">
+            Split the range into N non-overlapping windows — checks consistency, not luck.
+          </span>
+        </label>
+        {walkForwardOn && (
+          <label className="inline-flex items-center gap-2 text-sm">
+            <span className="text-slate-700">N windows</span>
+            <input
+              type="number"
+              min={2}
+              max={12}
+              value={nWindows}
+              onChange={(e) => setNWindows(Number(e.target.value))}
+              className="w-20 rounded-md border border-slate-300 px-2 py-1 text-sm"
+            />
+          </label>
+        )}
+      </div>
+
       <div className="mt-4 flex items-center gap-3">
         <button
           type="button"
@@ -181,7 +223,7 @@ export const BacktestCard = forwardRef<BacktestCardHandle, object>(function Back
           disabled={busy}
           className="rounded-md border border-trust bg-trust px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
-          {busy ? "Backtesting…" : "Run backtest"}
+          {busy ? (walkForwardOn ? "Walk-forward running…" : "Backtesting…") : (walkForwardOn ? "Run walk-forward" : "Run backtest")}
         </button>
         <span className="text-xs text-slate-500">Live data via yfinance — initial run may take ~10 s.</span>
       </div>
@@ -220,6 +262,62 @@ export const BacktestCard = forwardRef<BacktestCardHandle, object>(function Back
                 <Line type="monotone" dataKey="benchmark" name="Equal-weight buy & hold" stroke="#94a3b8" dot={false} strokeWidth={1.5} />
               </LineChart>
             </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {wfResp && (
+        <div className="mt-6 space-y-4">
+          {wfResp.warnings.length > 0 && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <strong className="mr-1">Walk-forward notes:</strong>
+              <ul className="ml-4 list-disc">
+                {wfResp.warnings.map((w, i) => <li key={i}>{w}</li>)}
+              </ul>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <Stat label="Windows" v={String(wfResp.aggregate.n_windows)} bench={null} />
+            <Stat label="Mean Sharpe" v={wfResp.aggregate.mean_sharpe.toFixed(2)} bench={null} />
+            <Stat label="Median return" v={fmtSigned(wfResp.aggregate.median_total_return)} bench={null} />
+            <Stat label="Beat B&H" v={`${(wfResp.aggregate.pct_windows_beating_benchmark * 100).toFixed(0)}%`} bench={null} />
+            <Stat label="Positive" v={`${(wfResp.aggregate.pct_windows_positive * 100).toFixed(0)}%`} bench={null} />
+          </div>
+
+          <div className="overflow-x-auto rounded-md border border-slate-200">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="px-3 py-2 text-left">Window</th>
+                  <th className="px-3 py-2 text-left">Range</th>
+                  <th className="px-3 py-2 text-right">Strategy</th>
+                  <th className="px-3 py-2 text-right">B&amp;H</th>
+                  <th className="px-3 py-2 text-right">Sharpe</th>
+                  <th className="px-3 py-2 text-right">Max DD</th>
+                  <th className="px-3 py-2 text-center">Beat?</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {wfResp.windows.map((w) => (
+                  <tr key={w.index}>
+                    <td className="px-3 py-2 font-medium text-slate-700">#{w.index + 1}</td>
+                    <td className="px-3 py-2 text-xs text-slate-500">{w.start} → {w.end}</td>
+                    <td className={`px-3 py-2 text-right tabular-nums ${w.metrics.total_return >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                      {fmtSigned(w.metrics.total_return)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-500">
+                      {w.benchmark_metrics ? fmtSigned(w.benchmark_metrics.total_return) : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">{w.metrics.sharpe.toFixed(2)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-500">{fmtPct(w.metrics.max_drawdown)}</td>
+                    <td className="px-3 py-2 text-center">
+                      {w.beat_benchmark ? <span className="text-emerald-700">✓</span> : <span className="text-slate-400">·</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
