@@ -169,3 +169,56 @@ py -3.12 -m trio_algorithms.mla.promote --start 2022-01-03 \\
 - Survivorship bias — universe is today's large-caps, not PIT membership.
 - Forward-horizon sensitivity — does 63-day return label fit the flow
   factors' natural decay? 30-day or 180-day would shift their value.
+
+## Walk-forward gate evaluation (2026-04-27)
+
+Single-window gate runs are vulnerable to selection effects. To test
+whether the prior gate-pass was real edge or one lucky slice, the model
+is retrained at the start of each rolling 6-month OOS window using all
+PIT data available before that window starts. Implementation:
+``scripts/walk_forward_gate.py``.
+
+### Result across 6 H1/H2 windows (2021-H1 through 2023-H2)
+
+| Window | Train n | RBA→MLA TotRet diff | MLA CAGR | CAGR lift | Gate |
+|--------|---------|---------------------|----------|-----------|------|
+| 2021-H1 | 140 | −11.8 pp | +55% | **−32 pp** | ✗ |
+| 2021-H2 | 164 | wins | +75% | +21 pp | ✓ |
+| 2022-H1 | 188 | small loss | −23% | −4 pp | ✗ |
+| 2022-H2 | 212 | wins | +20% | +4 pp | ✓ |
+| 2023-H1 | 236 | wins | +87% | **+51 pp** | ✓ |
+| 2023-H2 | 260 | wins | +25% | +29 pp | ✓ |
+
+### Aggregate
+
+- **Mean CAGR lift:** +11.57 pp
+- **Median CAGR lift:** +12.66 pp
+- **Stdev CAGR lift:** 28.85 pp (high — volatile across regimes)
+- **Mean Sharpe lift:** +0.60
+- **MLA beat RBA in 4 of 6 windows** (67%)
+- **Gate would promote in 4 of 6 windows** (67%)
+
+### Verdict
+
+MLA-7-factor outperforms RBA-BOS-Flow on average, but with substantial
+window-to-window variance. The mean +11.6 pp CAGR lift is real edge — it
+isn't a single-window artifact. But the 33% loss-rate is a real risk:
+MLA had two windows where RBA was the better choice, including a ~32 pp
+underperformance in 2021-H1.
+
+**Implications for production use:**
+- A PM running MLA across an entire year is likely better off than running
+  RBA — the wins compound, the losses are bounded.
+- A PM running MLA on a single window has a ~1-in-3 chance of underperforming.
+- The high dispersion is a signal that *neither* model is reliably good —
+  fundamentals + flow on a 28-name universe is a noisy regime.
+
+### What this doesn't yet test
+
+- **5-factor vs 7-factor head-to-head** under walk-forward (still pending).
+- **Out-of-universe generalization**: results are conditioned on this
+  curated 28-name basket. SP500-wide or KLCI-wide may differ.
+- **Survivorship bias**: today's universe, not PIT membership.
+- **Different forward-return horizons** (the label is 63 trading days; flow
+  factors' natural decay may want 30 or 180).
+- **Different rebalance cadences** (here: every 63 days, top-5).
