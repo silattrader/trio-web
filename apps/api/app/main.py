@@ -30,6 +30,7 @@ from trio_backtester.data import fetch_history, fetch_volume_history
 from trio_data_providers import (
     EdgarPitProvider,
     FmpPitProvider,
+    InsiderFlowPitProvider,
     MergedPitProvider,
     MockPitProvider,
     PitProvider,
@@ -138,12 +139,22 @@ def _make_pit_provider() -> PitProvider:
     """
     import os
     choice = os.environ.get("TRIO_PIT_PROVIDER", "mock").lower()
+    if choice == "edgar+fmp+insider":
+        edgar = EdgarPitProvider()
+        return MergedPitProvider([
+            edgar, FmpPitProvider(), InsiderFlowPitProvider(edgar_pit=edgar),
+        ])
+    if choice == "edgar+insider":
+        edgar = EdgarPitProvider()
+        return MergedPitProvider([edgar, InsiderFlowPitProvider(edgar_pit=edgar)])
     if choice == "edgar+fmp":
         return MergedPitProvider([EdgarPitProvider(), FmpPitProvider()])
     if choice == "edgar":
         return EdgarPitProvider()
     if choice == "fmp":
         return FmpPitProvider()
+    if choice == "insider":
+        return InsiderFlowPitProvider()
     return MockPitProvider()
 
 
