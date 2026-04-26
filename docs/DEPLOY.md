@@ -2,6 +2,13 @@
 
 Two services, two providers, ~10 minutes if everything connects on first try.
 
+> **Pre-deploy verification (run 2026-04-27):** the exact build commands
+> in `render.yaml` were executed in a fresh Python 3.12 venv and produced
+> a working API. The full Next.js production build was tested end-to-end
+> proxying to the API. Both succeed without errors. Findings baked into
+> the steps below — including one gotcha: Vercel's `NEXT_PUBLIC_API_URL`
+> must be set **before** clicking Deploy (it's a build-time variable).
+
 | Component | Provider | Free? | Cold-start? |
 |-----------|----------|-------|-------------|
 | Next.js (web UI) | [Vercel](https://vercel.com) | Yes | None — always warm |
@@ -51,11 +58,16 @@ own keys via the BYOK panel.
    the monorepo layout).
 5. **Build & Output Settings:** leave Vercel's defaults. The `vercel.json`
    in `apps/web` adds security headers automatically.
-6. **Environment Variables** → add:
+6. **Environment Variables** → add **before** clicking Deploy:
    ```
    NEXT_PUBLIC_API_URL = https://trio-api-xxxx.onrender.com
    ```
    Use the Render URL from step 1.6 (no trailing slash).
+
+   ⚠ **Order matters**: this variable is read at *build time* by Next.js's
+   rewrite config. If you click Deploy before adding it, Next.js will bake
+   in the localhost fallback and `/api/*` will 404 in production.
+   You'd have to redeploy from the Vercel dashboard after setting the var.
 7. Click **Deploy**. Build runs in ~1-2 min.
 8. Visit the deployed URL — Vercel hands you a `*.vercel.app` subdomain
    you can use straight away.
