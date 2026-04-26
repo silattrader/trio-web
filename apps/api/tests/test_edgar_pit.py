@@ -187,3 +187,48 @@ def test_edgar_pit_no_lookahead_pre_filing(patched_edgar):
     row = res.rows[0]
     assert row["altman_z"] is None
     assert row["dvd_yld_ind"] is None
+
+
+def test_edgar_pit_uses_market_yield_when_prices_supplied(patched_edgar):
+    """With as-of price provided, dvd_yld_ind switches from book to market."""
+    from datetime import timedelta
+    # Synthetic price ladder: AAPL = $150 around mid-2023.
+    base = date(2022, 6, 1)
+    prices = {
+        "AAPL": {base + timedelta(days=i): 150.0 for i in range(400)},
+    }
+    p = EdgarPitProvider()
+    # No prices: book-yield path.
+    book = p.fetch_as_of(["AAPL"], as_of=date(2023, 6, 1), model="bos")
+    book_yield = book.rows[0]["dvd_yld_ind"]
+    assert book.rows[0].get("_dvd_yld_kind") in (None, "book_fallback")
+
+    # With prices: market-yield path (much smaller % when price >> BVPS).
+    market = p.fetch_as_of(
+        ["AAPL"], as_of=date(2023, 6, 1), model="bos", prices=prices,
+    )
+    market_yield = market.rows[0]["dvd_yld_ind"]
+    assert market.rows[0]["_dvd_yld_kind"] == "market"
+    assert market_yield < book_yield  # market price > book value per share
+    # DPS in fixture is 0.91 (10-K FY); price 150 → ~0.61% market yield.
+    assert market_yield == pytest.approx(0.91 / 150.0 * 100, rel=1e-3)
+
+
+def test_edgar_pit_computes_vol_avg_when_volumes_supplied(patched_edgar):
+    from datetime import timedelta
+    base = date(2023, 1, 1)
+    # Step volume: 1M for first 30 days, 2M for next 60 days.
+    series = {}
+    for i in range(30):
+        series[base + timedelta(days=i)] = 1_000_000.0
+    for i in range(30, 90):
+        series[base + timedelta(days=i)] = 2_000_000.0
+    volumes = {"AAPL": series}
+
+    p = EdgarPitProvider()
+    res = p.fetch_as_of(
+        ["AAPL"], as_of=date(2023, 4, 1), model="bos", volumes=volumes,
+    )
+    v = res.rows[0]["vol_avg_3m"]
+    # Last 63 days of the series ≈ heavily weighted toward 2M.
+    assert v is not None and 1_500_000 < v < 2_000_001

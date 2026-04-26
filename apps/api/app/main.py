@@ -26,7 +26,7 @@ from trio_backtester import (
     run_backtest,
     run_walk_forward,
 )
-from trio_backtester.data import fetch_history
+from trio_backtester.data import fetch_history, fetch_volume_history
 from trio_data_providers import (
     EdgarPitProvider,
     MockPitProvider,
@@ -138,20 +138,33 @@ def _make_pit_provider() -> PitProvider:
 _pit_provider: PitProvider = _make_pit_provider()
 
 
-def _pit_score_for_backtest(tickers: list[str], model: str, as_of) -> ScoreResponse:
-    """PIT-aware score_fn for rba_pit. Uses MockPitProvider by default —
-    deterministic synthetic data, clearly flagged in warnings.
+def _make_pit_score_fn(
+    history: dict | None = None, volumes: dict | None = None
+):
+    """Build a PIT-aware score_fn that closes over pre-fetched prices+volumes.
 
-    Swap in `EdgarPitProvider` once Companyfacts is wired up.
+    EdgarPitProvider uses these to compute market dividend yield (DPS / as-of
+    price) and vol_avg_3m (63-day rolling). MockPitProvider ignores them.
     """
-    pit = _pit_provider.fetch_as_of(tickers, as_of=as_of, model=model)
-    if model == "bos":
-        return score_bos(pit.rows, universe=f"PIT@{as_of.isoformat()}")
-    if model == "mos":
-        return score_mos(pit.rows, universe=f"PIT@{as_of.isoformat()}")
-    if model == "mla_v0":
-        return score_mla_v0(pit.rows, universe=f"PIT@{as_of.isoformat()}")
-    return score_four_factor(pit.rows, universe=f"PIT@{as_of.isoformat()}")
+    def _fn(tickers: list[str], model: str, as_of) -> ScoreResponse:
+        pit = _pit_provider.fetch_as_of(
+            tickers, as_of=as_of, model=model,
+            prices=history, volumes=volumes,
+        )
+        u = f"PIT@{as_of.isoformat()}"
+        if model == "bos":
+            return score_bos(pit.rows, universe=u)
+        if model == "mos":
+            return score_mos(pit.rows, universe=u)
+        if model == "mla_v0":
+            return score_mla_v0(pit.rows, universe=u)
+        return score_four_factor(pit.rows, universe=u)
+    return _fn
+
+
+# Back-compat module-level function — no prices/volumes (used by tests that
+# don't go through the /backtest endpoint).
+_pit_score_for_backtest = _make_pit_score_fn()
 
 
 @app.post("/backtest", response_model=BacktestResponse)
@@ -172,11 +185,18 @@ def backtest(
     if not dates:
         raise HTTPException(status_code=502, detail="no price history returned for these tickers/dates")
 
-    score_fn = (
-        _pit_score_for_backtest if strategy == "rba_pit"
-        else _score_for_backtest if strategy == "rba_snapshot"
-        else None
-    )
+    if strategy == "rba_pit":
+        # Fetch volumes once so EdgarPitProvider can compute vol_avg_3m
+        # point-in-time. Mock ignores it. Cached on yfinance side.
+        try:
+            volumes = fetch_volume_history(req.tickers, req.start, req.end)
+        except Exception:  # noqa: BLE001
+            volumes = {}
+        score_fn = _make_pit_score_fn(history=history, volumes=volumes)
+    elif strategy == "rba_snapshot":
+        score_fn = _score_for_backtest
+    else:
+        score_fn = None
     return run_backtest(req, strategy, history=history, dates=dates, score_fn=score_fn)
 
 
@@ -199,11 +219,16 @@ def backtest_walk_forward(
     if not dates:
         raise HTTPException(status_code=502, detail="no price history returned for these tickers/dates")
 
-    score_fn = (
-        _pit_score_for_backtest if strategy == "rba_pit"
-        else _score_for_backtest if strategy == "rba_snapshot"
-        else None
-    )
+    if strategy == "rba_pit":
+        try:
+            volumes = fetch_volume_history(req.tickers, req.start, req.end)
+        except Exception:  # noqa: BLE001
+            volumes = {}
+        score_fn = _make_pit_score_fn(history=history, volumes=volumes)
+    elif strategy == "rba_snapshot":
+        score_fn = _score_for_backtest
+    else:
+        score_fn = None
     return run_walk_forward(
         req, strategy,
         n_windows=n_windows,

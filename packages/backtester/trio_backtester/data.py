@@ -17,6 +17,72 @@ class PriceHistory(Protocol):
     def __len__(self) -> int: ...
 
 
+def _fetch_field(
+    tickers: list[str], start: date, end: date, field: str
+) -> tuple[list[date], dict[str, dict[date, float]]]:
+    """Generic OHLCV puller. ``field`` is one of "Close", "Volume", etc."""
+    try:
+        import yfinance as yf
+    except ImportError as e:  # pragma: no cover
+        raise RuntimeError("yfinance not installed; install trio-backtester") from e
+
+    raw = yf.download(
+        tickers=" ".join(tickers),
+        start=start.isoformat(),
+        end=end.isoformat(),
+        progress=False,
+        auto_adjust=True,
+        group_by="ticker",
+        threads=False,
+    )
+    if raw is None or raw.empty:
+        return [], {}
+
+    out: dict[str, dict[date, float]] = {}
+    all_dates: set[date] = set()
+
+    if len(tickers) == 1:
+        t = tickers[0]
+        series = raw[field] if field in raw.columns else raw.get((field,))
+        if series is None:
+            return [], {}
+        d_map: dict[date, float] = {}
+        for ts, val in series.items():
+            if val is None or (isinstance(val, float) and val != val):
+                continue
+            d = ts.date() if hasattr(ts, "date") else ts
+            d_map[d] = float(val)
+            all_dates.add(d)
+        out[t] = d_map
+    else:
+        for t in tickers:
+            try:
+                series = raw[t][field]
+            except (KeyError, TypeError):
+                continue
+            d_map = {}
+            for ts, val in series.items():
+                if val is None or (isinstance(val, float) and val != val):
+                    continue
+                d = ts.date() if hasattr(ts, "date") else ts
+                d_map[d] = float(val)
+                all_dates.add(d)
+            if d_map:
+                out[t] = d_map
+
+    return sorted(all_dates), out
+
+
+def fetch_volume_history(
+    tickers: list[str], start: date, end: date
+) -> dict[str, dict[date, float]]:
+    """Per-ticker daily volume history. Used by EdgarPitProvider for
+    point-in-time vol_avg_3m. Returns just the per-ticker map (dates are
+    in the corresponding price history)."""
+    _, vols = _fetch_field(tickers, start, end, "Volume")
+    return vols
+
+
 def fetch_history(
     tickers: list[str], start: date, end: date
 ) -> tuple[list[date], dict[str, dict[date, float]]]:

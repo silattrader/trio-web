@@ -170,6 +170,32 @@ def latest_as_of(
     return valid[-1]
 
 
+def latest_max_at_end(
+    facts: dict,
+    *,
+    namespace: str,
+    tag: str,
+    unit: str,
+    as_of: str,
+    annual_only: bool = False,
+) -> FactPoint | None:
+    """At the most recent ``end`` visible at ``as_of``, return the row with
+    the LARGEST val. Useful for concepts where XBRL stores both quarterly
+    and full-year rows under the same end-date (e.g. dividends-per-share)
+    and we want the annual figure."""
+    series = _extract_unit_series(facts, namespace, tag, unit)
+    if annual_only:
+        series = [s for s in series if s.form in {"10-K", "10-K/A", "20-F", "20-F/A"}]
+    visible = [s for s in series if s.filed <= as_of]
+    if not visible:
+        return None
+    # Find the most recent end-date.
+    last_end = max(s.end for s in visible)
+    candidates = [s for s in visible if s.end == last_end]
+    candidates.sort(key=lambda s: s.val, reverse=True)
+    return candidates[0]
+
+
 def trailing_sum(
     facts: dict,
     *,
@@ -222,5 +248,6 @@ __all__ = [
     "fetch_companyfacts",
     "fetch_ticker_map",
     "latest_as_of",
+    "latest_max_at_end",
     "trailing_sum",
 ]

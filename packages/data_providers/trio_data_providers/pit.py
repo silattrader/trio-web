@@ -44,9 +44,21 @@ class PitProvider(ABC):
 
     @abstractmethod
     def fetch_as_of(
-        self, tickers: list[str], *, as_of: date, model: str
+        self,
+        tickers: list[str],
+        *,
+        as_of: date,
+        model: str,
+        prices: dict[str, dict[date, float]] | None = None,
+        volumes: dict[str, dict[date, float]] | None = None,
     ) -> PitResult:
-        """Pull canonical-field rows for these tickers as-of `as_of`."""
+        """Pull canonical-field rows for these tickers as-of ``as_of``.
+
+        ``prices`` and ``volumes``: optional pre-fetched per-ticker daily
+        series. When supplied, an EDGAR-style provider can compute market
+        dividend yield (DPS / price) and vol_avg_3m point-in-time. Mock
+        and stub providers ignore them.
+        """
 
 
 # --------------------------------------------------------------------------
@@ -84,8 +96,15 @@ class MockPitProvider(PitProvider):
     label = "Mock point-in-time (synthetic, deterministic)"
 
     def fetch_as_of(
-        self, tickers: list[str], *, as_of: date, model: str
+        self,
+        tickers: list[str],
+        *,
+        as_of: date,
+        model: str,
+        prices: dict[str, dict[date, float]] | None = None,
+        volumes: dict[str, dict[date, float]] | None = None,
     ) -> PitResult:
+        del prices, volumes  # MockPitProvider doesn't use price data.
         rows: list[dict[str, Any]] = []
         # Anchor t-coordinate on epoch-day so "drift" is cross-call stable.
         t = (as_of - date(2000, 1, 1)).days
@@ -182,8 +201,11 @@ class EdgarPitProvider(PitProvider):
     _TAGS_SHARES_OUT = [
         ("dei", "EntityCommonStockSharesOutstanding", "shares", False),
     ]
+    # Issuers report DPS under different tags — try Declared first (Apple,
+    # Microsoft) then CashPaid (J&J, many others).
     _TAGS_DIVIDENDS_PS = [
         ("us-gaap", "CommonStockDividendsPerShareDeclared", "USD/shares", False),
+        ("us-gaap", "CommonStockDividendsPerShareCashPaid", "USD/shares", False),
     ]
 
     def __init__(self, *, ttl_seconds: int = 24 * 3600) -> None:
@@ -210,8 +232,40 @@ class EdgarPitProvider(PitProvider):
                 return point
         return None
 
+    @staticmethod
+    def _price_as_of(series: dict[date, float] | None, as_of: date) -> float | None:
+        """Forward-fill: latest price on or before `as_of`."""
+        if not series:
+            return None
+        candidates = [d for d in series if d <= as_of]
+        if not candidates:
+            return None
+        return series[max(candidates)]
+
+    @staticmethod
+    def _vol_avg_around(
+        series: dict[date, float] | None, as_of: date, n_bars: int = 63
+    ) -> float | None:
+        """Mean of the last `n_bars` daily volumes ending at or before as_of.
+        63 ≈ 3 trading months."""
+        if not series:
+            return None
+        candidates = sorted(d for d in series if d <= as_of)
+        if not candidates:
+            return None
+        window = candidates[-n_bars:]
+        if not window:
+            return None
+        return sum(series[d] for d in window) / len(window)
+
     def fetch_as_of(
-        self, tickers: list[str], *, as_of: date, model: str
+        self,
+        tickers: list[str],
+        *,
+        as_of: date,
+        model: str,
+        prices: dict[str, dict[date, float]] | None = None,
+        volumes: dict[str, dict[date, float]] | None = None,
     ) -> PitResult:
         from . import _edgar_client as ec
 
@@ -271,20 +325,49 @@ class EdgarPitProvider(PitProvider):
             # YTD-cumulative (not stand-alone), so naive trailing-sum
             # double-counts. Cleanest approach: pull the most recent 10-K
             # FY value as the annualized DPS, divide by book-value-per-share.
+            # XBRL stores both quarterly AND annual DPS under the same
+            # end-date with form=10-K — pick the largest value at the most
+            # recent end so we get the full-year figure, not a quarter.
+            # Issuers vary which tag they populate (Declared vs CashPaid),
+            # and one tag may carry stale data — prefer the candidate whose
+            # `end` is most recent.
             ttm_dvd = None
+            best_pt: ec.FactPoint | None = None
             for ns, tag, unit, _ in self._TAGS_DIVIDENDS_PS:
-                pt = ec.latest_as_of(
+                pt = ec.latest_max_at_end(
                     facts, namespace=ns, tag=tag, unit=unit,
                     as_of=as_of_iso, annual_only=True,
                 )
-                if pt is not None:
-                    ttm_dvd = pt.val
-                    break
+                if pt is None:
+                    continue
+                if best_pt is None or pt.end > best_pt.end:
+                    best_pt = pt
+            if best_pt is not None:
+                ttm_dvd = best_pt.val
             shares = self._first_available(facts, self._TAGS_SHARES_OUT, as_of_iso)
-            if ttm_dvd is not None and eq is not None and shares is not None and shares.val > 0:
+
+            # Prefer market yield when as-of price is available; fall back
+            # to book yield (book-value-per-share) otherwise.
+            price = self._price_as_of(
+                prices.get(ticker_raw) or prices.get(ticker) if prices else None,
+                as_of,
+            )
+            if ttm_dvd is not None and price and price > 0:
+                row["dvd_yld_ind"] = round(100.0 * ttm_dvd / price, 3)
+                row["_dvd_yld_kind"] = "market"
+            elif ttm_dvd is not None and eq is not None and shares is not None and shares.val > 0:
                 bvps = eq.val / shares.val
                 if bvps > 0:
                     row["dvd_yld_ind"] = round(100.0 * ttm_dvd / bvps, 3)
+                    row["_dvd_yld_kind"] = "book_fallback"
+
+            # vol_avg_3m from a 63-day rolling mean of volume ending at as_of.
+            vol_series = (
+                volumes.get(ticker_raw) or volumes.get(ticker) if volumes else None
+            )
+            v3m = self._vol_avg_around(vol_series, as_of)
+            if v3m is not None:
+                row["vol_avg_3m"] = round(v3m, 1)
 
             rows.append(row)
 
@@ -292,22 +375,35 @@ class EdgarPitProvider(PitProvider):
             f"edgar_pit: {sum(1 for r in rows if r.get('_edgar_error'))} of {len(rows)} "
             "tickers had no usable data (CIK not found or fetch failed)."
         )
+        gave_market_yield = sum(1 for r in rows if r.get("_dvd_yld_kind") == "market")
+        gave_vol = sum(1 for r in rows if r.get("vol_avg_3m") is not None)
         warnings.append(
-            "edgar_pit: vol_avg_3m, target_return, and analyst_sent are NOT "
-            "recoverable point-in-time from XBRL filings — those factors are "
-            "left None and treated as missing by the scoring engine."
+            "edgar_pit: target_return and analyst_sent are forward-looking "
+            "analyst data — not in XBRL filings; left None and treated as "
+            "missing by the scoring engine."
         )
         warnings.append(
             "edgar_pit: altman_z is computed as Altman Z' (private-firm "
             "variant) using book-value of equity, not market cap — avoids "
             "needing as-of price data."
         )
-        warnings.append(
-            "edgar_pit: dvd_yld_ind here is most-recent-10-K dividend per "
-            "share / book-value per share — a BOOK yield, not market yield. "
-            "Biased upward when buybacks compress book value (e.g. AAPL). "
-            "Adding as-of price data would give a market yield; deferred."
-        )
+        if prices is not None:
+            warnings.append(
+                f"edgar_pit: market dvd_yld_ind for {gave_market_yield}/{len(rows)} "
+                "rows (DPS / as-of price). Falls back to book yield when no "
+                "as-of price is available."
+            )
+        if volumes is not None:
+            warnings.append(
+                f"edgar_pit: vol_avg_3m for {gave_vol}/{len(rows)} rows "
+                "(63-day rolling mean ending at as_of)."
+            )
+        if prices is None and volumes is None:
+            warnings.append(
+                "edgar_pit: no prices/volumes supplied — vol_avg_3m is None "
+                "and dvd_yld_ind uses BOOK yield (biased upward by buybacks). "
+                "Pass prices=/volumes= for a market-yield + true vol_avg_3m."
+            )
 
         return PitResult(
             rows=rows, as_of=as_of, provider=self.name, warnings=warnings,

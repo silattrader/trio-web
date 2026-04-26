@@ -76,12 +76,18 @@ date. No lookahead when paired with a real PIT provider. See
     as-of market cap. Book-value-of-equity / liabilities replaces the
     market-cap term. Returns None for issuers without current-asset /
     current-liability reporting (e.g. banks).
-  - `dvd_yld_ind`: most-recent-10-K dividend-per-share ÷ book-value-per-share
-    — a **book** yield, not market yield. Biased upward when buybacks
-    compress BV (e.g. AAPL). A real market yield needs as-of price data
-    from yfinance; deferred.
-  - `vol_avg_3m`, `target_return`, `analyst_sent` are NOT in XBRL filings
-    and are returned as None — the BOS engine treats them as missing.
+  - `dvd_yld_ind`: when `prices=` is supplied (the engine does this
+    automatically), uses **market** yield = most-recent-10-K DPS / as-of
+    forward-filled price. Falls back to book-yield (DPS / BVPS) when no
+    price data is available. Tag fallback chain: `CommonStockDividendsPerShareDeclared`
+    then `CommonStockDividendsPerShareCashPaid` (J&J etc.); prefers
+    whichever populates a more recent `end`. `latest_max_at_end` is used
+    instead of `latest_as_of` so we get the full-year sum, not a quarter,
+    when XBRL stores both rows under the same end-date.
+  - `vol_avg_3m`: when `volumes=` is supplied, computed as the 63-day
+    rolling mean of daily volume ending at as_of. Otherwise None.
+  - `target_return`, `analyst_sent`: forward-looking analyst data, not in
+    XBRL filings — always None. The BOS engine treats them as missing.
 
   Switch in: set `TRIO_PIT_PROVIDER=edgar` in the API process env. Default
   remains MockPitProvider (synthetic, deterministic).
