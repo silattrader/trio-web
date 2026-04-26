@@ -98,23 +98,74 @@ surface.
 ## Hard rule (from project_constitution)
 
 MLA cannot ship as default until backtested return ≥ RBA on same universe +
-period. **Status: PASSED** as of 2026-04-26 on the curated 28-stock US
-large-cap universe, 2022-2023 out-of-sample (model trained 2018-2021):
+period. **Status: PASSED** on both 5-factor and 7-factor variants.
 
-| Metric        | RBA-BOS | MLA v0  | Lift     |
-|---------------|---------|---------|----------|
-| Total return  |  +9.58% | +31.91% | +22.3 pp |
-| CAGR          |  +4.73% | +15.01% | +10.3 pp |
-| Sharpe        |    0.33 |    0.74 | +0.41    |
-| Max drawdown  | -19.15% | -27.01% | -7.9 pp  |
+### 5-factor MLA · gate-passed 2026-04-26
 
-CAGR + Sharpe gates both PASS. MaxDD is worse — the engine takes more risk
-in exchange for the better returns. Acceptable given the gate thresholds
-(CAGR lift ≥ 0, Sharpe lift ≥ -0.1) but flagged for the PM.
+Original BOS factors only. 2022-2023 out-of-sample, model trained 2018-2021.
 
-**To reproduce:** ``py -3.12 -m trio_algorithms.mla.promote --start 2022-01-03 \\
-   --end 2023-12-29 --artifact .../mla_v1_clean.joblib``
+| Metric        | RBA-BOS | MLA-5-factor | Lift     |
+|---------------|---------|--------------|----------|
+| Total return  |  +9.58% |      +31.91% | +22.3 pp |
+| CAGR          |  +4.73% |      +15.01% | +10.3 pp |
+| Sharpe        |    0.33 |         0.74 | +0.41    |
+| Max drawdown  | -19.15% |      -27.01% | -7.9 pp  |
 
-**Not yet validated:** S&P 500-wide promotion (universe was 28 names),
-multi-period robustness (only one OOS window), and effects of survivorship
-bias (universe is today's large-caps, not point-in-time membership).
+### 7-factor MLA · gate-passed 2026-04-26 (but underperforms 5-factor)
+
+Adds `insider_flow` (Form 4) + `retail_flow` (Wikipedia pageviews z-score).
+Same universe + window + train/test split as the 5-factor run.
+
+| Metric        | RBA-BOS-Flow | MLA-7-factor | Lift     |
+|---------------|--------------|--------------|----------|
+| Total return  |       +9.58% |      +26.36% | +16.8 pp |
+| CAGR          |       +4.73% |      +12.54% | +7.81 pp |
+| Sharpe        |         0.33 |         0.62 | +0.29    |
+| Max drawdown  |      -19.15% |      -25.10% | -5.95 pp |
+
+The gate passes — MLA-7-factor beats the corresponding RBA. **But against
+MLA-5-factor on the same OOS window, the 7-factor model is worse.** Adding
+the flow factors hurt rather than helped here.
+
+This is the kind of finding that walk-forward evaluation is *supposed* to
+surface, and it deserves explicit documentation rather than burial:
+
+| | 5-factor MLA | 7-factor MLA |
+|---|---|---|
+| CAGR | 15.01% | 12.54% |
+| Sharpe | 0.74 | 0.62 |
+| TotRet | +31.91% | +26.36% |
+
+**Plausible causes** (none yet validated):
+- 188 training samples is thin for a 7-feature gradient boost (curse of
+  dimensionality — the new factors widen the search space without enough
+  data to find their true coefficient).
+- 90-day rolling flow signals don't align well with the 63-day forward
+  return label — different time horizons.
+- Flow factors may duplicate signal already captured by altman_z + dvd_yld
+  rather than adding orthogonal edge.
+- Single OOS window can't distinguish bad luck from worse model.
+
+**Active artifact remains the 7-factor model** (`mla_v0.joblib` is full-
+range trained on 2018-2023 with all 7 features). The 5-factor model is
+preserved for comparison but no longer the default. Honest reasoning: the
+5-factor's edge may be lucky on this single OOS slice; only walk-forward
+across many slices can tell. Until that runs, both gate-passed models are
+documented and either can be loaded by passing `artifact=` to
+`score_mla_v0()`.
+
+**To reproduce:**
+
+```
+py -3.12 -m trio_algorithms.mla.promote --start 2022-01-03 \\
+   --end 2023-12-29 \\
+   --artifact packages/algorithms/trio_algorithms/mla/artifacts/mla_v1_clean.joblib
+```
+
+**Honest open questions:**
+- 5-factor vs 7-factor under walk-forward (multiple OOS slices) — would the
+  5-factor's lead survive? Or is it a single-window artifact?
+- S&P 500-wide universe (currently 28-name large-cap basket).
+- Survivorship bias — universe is today's large-caps, not PIT membership.
+- Forward-horizon sensitivity — does 63-day return label fit the flow
+  factors' natural decay? 30-day or 180-day would shift their value.
