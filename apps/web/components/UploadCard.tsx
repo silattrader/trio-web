@@ -71,6 +71,7 @@ export function UploadCard({ onResult }: Props) {
             <option value="bos">BOS — 5-Factor weighted</option>
             <option value="mos">MOS — Margin-of-Safety (Graham)</option>
             <option value="four_factor">4-Factor — Legacy 2019</option>
+            <option value="mla_v0">MLA v0 — Gradient-Boosted (preview)</option>
           </select>
         </label>
         <label className="text-sm">

@@ -6,8 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-StrategyId = Literal["sma", "rba_snapshot"]
-ModelId = Literal["bos", "mos", "four_factor"]
+StrategyId = Literal["sma", "rba_snapshot", "rba_pit"]
+ModelId = Literal["bos", "mos", "four_factor", "mla_v0"]
 
 
 class BacktestRequest(BaseModel):

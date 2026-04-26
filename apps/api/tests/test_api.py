@@ -9,11 +9,12 @@ def test_health():
     assert client.get("/health").json() == {"status": "ok"}
 
 
-def test_models_lists_three_rba_engines():
+def test_models_lists_rba_and_mla():
     data = client.get("/models").json()
     ids = [m["id"] for m in data["rba"]]
     assert ids == ["bos", "mos", "four_factor"]
-    assert data["mla"] == []
+    mla_ids = [m["id"] for m in data["mla"]]
+    assert mla_ids == ["mla_v0"]
 
 
 def test_score_bos_endpoint():

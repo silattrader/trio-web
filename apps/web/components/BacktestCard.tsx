@@ -23,6 +23,7 @@ import {
 const STRATEGIES: { id: StrategyId; label: string; blurb: string }[] = [
   { id: "sma", label: "SMA crossover (price-only)", blurb: "Fast/slow moving-average crossover. No fundamentals → no lookahead bias." },
   { id: "rba_snapshot", label: "RBA snapshot (lookahead-flagged)", blurb: "Top-N by today's RBA score, equal-weight, periodic rebalance. Demo-only — uses today's fundamentals against historical prices." },
+  { id: "rba_pit", label: "RBA point-in-time (Path 3)", blurb: "Re-scores the universe at every rebalance using as-of fundamentals. Currently backed by MockPitProvider (synthetic but deterministic) until SEC EDGAR is wired up." },
 ];
 
 function fmtPct(x: number): string {
@@ -180,6 +181,7 @@ export const BacktestCard = forwardRef<BacktestCardHandle, object>(function Back
               <option value="bos">BOS</option>
               <option value="mos">MOS</option>
               <option value="four_factor">4-Factor</option>
+              <option value="mla_v0">MLA v0 (preview)</option>
             </select>
           </label>
           <NumField label="Top N" value={topN} setValue={setTopN} min={1} max={20} />

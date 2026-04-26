@@ -53,10 +53,27 @@ Use this before believing any single equity curve. A strategy with one good
 2020-2021 leg and four flat years has a misleading aggregate metric; the
 per-window table makes that obvious.
 
-### Path 3 — point-in-time fundamentals (deferred)
+### `rba_pit` — Path 3 point-in-time
 
-Requires a paid feed (Sharadar, EOD, SimFin) or SEC EDGAR reconstruction.
-Not in P4 scope; plan to revisit before MLA promotion gate (P5+).
+Re-scores the universe at every rebalance using fundamentals as-of that
+date. No lookahead when paired with a real PIT provider. See
+`packages/data_providers/trio_data_providers/pit.py`:
+
+- **MockPitProvider** (active default) — deterministic synthetic time-series.
+  Same ticker on the same date always returns the same numbers; smooth
+  cross-date drift gives the strategy something to react to. Every result
+  carries a `synthetic_pit:` warning. Useful for demoing the architecture
+  end-to-end without a paid feed.
+
+- **EdgarPitProvider** (skeleton) — SEC EDGAR Companyfacts adapter, not yet
+  implemented. The docstring spells out the wire-up: CIK lookup,
+  `User-Agent` header, `filed <= as_of` filtering for no-lookahead, mapping
+  XBRL tags to Altman-Z components, and the two factors (`analyst_sent`,
+  `target_return`) that genuinely cannot be recovered point-in-time from
+  filings.
+
+Inputs same as `rba_snapshot`: `model`, `top_n`, `rebalance_days`, `fee_bps`.
+Engine emits a `Rebalances: N; first selection ...` info warning.
 
 ## Metrics
 

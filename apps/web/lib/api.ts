@@ -41,7 +41,7 @@ export interface ScoreResponse {
   warnings: string[];
 }
 
-export type ModelId = "bos" | "mos" | "four_factor";
+export type ModelId = "bos" | "mos" | "four_factor" | "mla_v0";
 
 export interface BosWeights {
   f1_volume: number;
@@ -86,7 +86,7 @@ export async function fetchUniverse(
   return res.json();
 }
 
-export type StrategyId = "sma" | "rba_snapshot";
+export type StrategyId = "sma" | "rba_snapshot" | "rba_pit";
 
 export interface EquityPoint {
   date: string;

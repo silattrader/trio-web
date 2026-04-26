@@ -95,6 +95,7 @@ export function LiveUniverseCard({ onResult }: Props) {
             <option value="bos">BOS — 5-Factor</option>
             <option value="mos">MOS — Margin-of-Safety</option>
             <option value="four_factor">4-Factor — Legacy</option>
+            <option value="mla_v0">MLA v0 — Gradient-Boosted (preview)</option>
           </select>
         </label>
       </div>

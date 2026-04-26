@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from trio_backtester import BacktestRequest, run_backtest, run_walk_forward
 from trio_backtester.walk_forward import _split_indices, _stdev, _median
+from trio_data_providers import EdgarPitProvider, MockPitProvider
 from trio_backtester.metrics import (
     cagr,
     daily_returns,
@@ -235,6 +236,63 @@ def test_walk_forward_rejects_n_windows_lt_2():
     req = BacktestRequest(tickers=["AAA"], start=dates[0], end=dates[-1])
     with pytest.raises(ValueError):
         run_walk_forward(req, "sma", n_windows=1, history=hist, dates=dates)
+
+
+# ----------------------------- Path 3 / rba_pit --------------------------
+
+
+def test_mock_pit_provider_is_deterministic():
+    p = MockPitProvider()
+    a = p.fetch_as_of(["AAPL", "MSFT"], as_of=date(2022, 6, 1), model="bos")
+    b = p.fetch_as_of(["AAPL", "MSFT"], as_of=date(2022, 6, 1), model="bos")
+    assert a.rows == b.rows
+    assert any("synthetic_pit" in w for w in a.warnings)
+
+
+def test_mock_pit_provider_drifts_over_time():
+    p = MockPitProvider()
+    early = p.fetch_as_of(["AAPL"], as_of=date(2018, 1, 1), model="bos").rows[0]
+    late = p.fetch_as_of(["AAPL"], as_of=date(2024, 1, 1), model="bos").rows[0]
+    # Should NOT be identical — that's the whole point of PIT.
+    assert early != late
+    # But same ticker so the "anchor" base values overlap; only drift differs.
+    assert early["ticker"] == late["ticker"] == "AAPL"
+
+
+def test_edgar_pit_is_a_documented_stub():
+    with pytest.raises(NotImplementedError):
+        EdgarPitProvider().fetch_as_of(["AAPL"], as_of=date(2024, 1, 1), model="bos")
+
+
+def test_engine_rba_pit_rebalances_per_window():
+    """rba_pit calls score_fn at t=0 and again every rebalance_days bars."""
+    dates, hist = _trending_history(date(2020, 1, 1), 100, ticker="AAA")
+    hist["BBB"] = {d: 100.0 + i * 0.1 for i, d in enumerate(dates)}
+    hist["CCC"] = {d: 200.0 - i * 0.05 for i, d in enumerate(dates)}
+
+    call_dates: list[date] = []
+
+    def fake_score_fn(tickers, model, as_of):
+        call_dates.append(as_of)
+        # Rotate the "winner" each call so selection actually changes.
+        idx = len(call_dates) - 1
+        scored = [_FakeStockResult(tickers[(idx + i) % len(tickers)], 4 - i) for i in range(len(tickers))]
+        return _FakeScoreResp(scored)
+
+    req = BacktestRequest(
+        tickers=["AAA", "BBB", "CCC"], start=dates[0], end=dates[-1],
+        top_n=2, rebalance_days=20, fee_bps=0,
+    )
+    resp = run_backtest(
+        req, "rba_pit", history=hist, dates=dates, score_fn=fake_score_fn,
+    )
+    # Should have rebalanced multiple times (100 days / 20 ≈ 5).
+    assert len(call_dates) >= 4
+    # First call must use t=0; subsequent calls use later dates.
+    assert call_dates[0] == dates[0]
+    for prev, curr in zip(call_dates, call_dates[1:]):
+        assert curr > prev
+    assert any("rba_pit" in w.lower() or "rebalances" in w.lower() for w in resp.warnings)
 
 
 def test_walk_forward_endpoint_sma_with_mocked_history(monkeypatch):

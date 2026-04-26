@@ -9,6 +9,9 @@ description = "TRIO scoring engines — RBA + MLA share one ScoreResponse contra
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.7",
+    "scikit-learn>=1.4",
+    "joblib>=1.3",
+    "numpy>=1.26",
 ]
 
 [tool.setuptools.packages.find]

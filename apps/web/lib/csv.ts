@@ -35,6 +35,15 @@ const ALIASES: Record<ModelId, Record<string, string>> = {
     FIVE_YR_AVG_PRICE_EARNINGS: "pe_5yr_avg",
     LONG_COMP_NAME: "name",
   },
+  // MLA v0 reads the same 5 features as BOS — alias map is identical.
+  mla_v0: {
+    VOLUME_AVG_3M: "vol_avg_3m",
+    RETURN: "target_return",
+    EQY_DVD_YLD_IND: "dvd_yld_ind",
+    ALTMAN_Z_SCORE: "altman_z",
+    EQY_REC_CONS: "analyst_sent",
+    LONG_COMP_NAME: "name",
+  },
 };
 
 export function parseCsv(text: string, model: ModelId): Record<string, unknown>[] {

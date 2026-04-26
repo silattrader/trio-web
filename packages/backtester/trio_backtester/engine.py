@@ -12,12 +12,18 @@ from .contracts import (
     StrategyId,
 )
 from .metrics import summarise
-from .strategies import rba_snapshot, sma
+from .strategies import rba_pit, rba_snapshot, sma
 
 LOOKAHEAD_WARNING = (
     "rba_snapshot uses TODAY's RBA scores against historical prices — "
     "results suffer from lookahead and survivorship bias. Demo only; "
     "Path 3 (point-in-time fundamentals) is needed for publishable numbers."
+)
+
+PIT_INFO = (
+    "rba_pit re-scores the universe at every rebalance using as-of "
+    "fundamentals. Honesty depends on the PIT provider — MockPitProvider "
+    "is synthetic; EdgarPitProvider is required for publishable numbers."
 )
 
 ScoreFn = Callable[[list[str], str, date], Any]
@@ -117,6 +123,27 @@ def run_backtest(
                 rebalance_days=req.rebalance_days,
                 initial_capital=req.initial_capital,
                 fee_bps=req.fee_bps,
+            )
+
+    elif strategy == "rba_pit":
+        warnings.append(PIT_INFO)
+        if score_fn is None:
+            raise ValueError("rba_pit requires score_fn (PIT-aware)")
+        equity, trade_rets, rebal_log = rba_pit.simulate(
+            dates=dates,
+            history=history,
+            tickers=req.tickers,
+            model=req.model,
+            top_n=req.top_n,
+            rebalance_days=req.rebalance_days,
+            initial_capital=req.initial_capital,
+            fee_bps=req.fee_bps,
+            pit_score_fn=score_fn,
+        )
+        if rebal_log:
+            warnings.append(
+                f"Rebalances: {len(rebal_log)}; first selection "
+                + ", ".join(rebal_log[0][1])
             )
 
     else:  # pragma: no cover

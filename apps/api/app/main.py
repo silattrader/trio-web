@@ -16,6 +16,7 @@ from trio_algorithms import (
     ScoreResponse,
     score_bos,
     score_four_factor,
+    score_mla_v0,
     score_mos,
 )
 from trio_backtester import (
@@ -26,9 +27,14 @@ from trio_backtester import (
     run_walk_forward,
 )
 from trio_backtester.data import fetch_history
-from trio_data_providers import ProviderError, get_provider, list_providers
+from trio_data_providers import (
+    MockPitProvider,
+    ProviderError,
+    get_provider,
+    list_providers,
+)
 
-ModelName = Literal["bos", "mos", "four_factor"]
+ModelName = Literal["bos", "mos", "four_factor", "mla_v0"]
 
 app = FastAPI(
     title="TRIO Web API",
@@ -57,7 +63,9 @@ def list_models() -> dict:
             {"id": "mos", "version": "rba-mos-1.0.0", "label": "Margin-of-Safety (Graham)"},
             {"id": "four_factor", "version": "rba-four-factor-1.0.0", "label": "4-Factor Legacy"},
         ],
-        "mla": [],
+        "mla": [
+            {"id": "mla_v0", "version": "mla-v0.1.0", "label": "Gradient-Boosted (preview)"},
+        ],
     }
 
 
@@ -76,6 +84,8 @@ def score(
         return score_mos(req.rows, universe=req.universe)
     if model == "four_factor":
         return score_four_factor(req.rows, universe=req.universe, legacy=legacy)
+    if model == "mla_v0":
+        return score_mla_v0(req.rows, universe=req.universe)
 
     raise HTTPException(status_code=400, detail=f"unknown model: {model}")
 
@@ -89,7 +99,7 @@ def providers() -> dict:
     return {"providers": list_providers()}
 
 
-StrategyName = Literal["sma", "rba_snapshot"]
+StrategyName = Literal["sma", "rba_snapshot", "rba_pit"]
 
 
 def _score_for_backtest(tickers: list[str], model: str, _as_of) -> ScoreResponse:
@@ -104,7 +114,28 @@ def _score_for_backtest(tickers: list[str], model: str, _as_of) -> ScoreResponse
         return score_bos(res.rows, universe=res.universe)
     if model == "mos":
         return score_mos(res.rows, universe=res.universe)
+    if model == "mla_v0":
+        return score_mla_v0(res.rows, universe=res.universe)
     return score_four_factor(res.rows, universe=res.universe)
+
+
+_pit_provider = MockPitProvider()
+
+
+def _pit_score_for_backtest(tickers: list[str], model: str, as_of) -> ScoreResponse:
+    """PIT-aware score_fn for rba_pit. Uses MockPitProvider by default —
+    deterministic synthetic data, clearly flagged in warnings.
+
+    Swap in `EdgarPitProvider` once Companyfacts is wired up.
+    """
+    pit = _pit_provider.fetch_as_of(tickers, as_of=as_of, model=model)
+    if model == "bos":
+        return score_bos(pit.rows, universe=f"PIT@{as_of.isoformat()}")
+    if model == "mos":
+        return score_mos(pit.rows, universe=f"PIT@{as_of.isoformat()}")
+    if model == "mla_v0":
+        return score_mla_v0(pit.rows, universe=f"PIT@{as_of.isoformat()}")
+    return score_four_factor(pit.rows, universe=f"PIT@{as_of.isoformat()}")
 
 
 @app.post("/backtest", response_model=BacktestResponse)
@@ -125,7 +156,11 @@ def backtest(
     if not dates:
         raise HTTPException(status_code=502, detail="no price history returned for these tickers/dates")
 
-    score_fn = _score_for_backtest if strategy == "rba_snapshot" else None
+    score_fn = (
+        _pit_score_for_backtest if strategy == "rba_pit"
+        else _score_for_backtest if strategy == "rba_snapshot"
+        else None
+    )
     return run_backtest(req, strategy, history=history, dates=dates, score_fn=score_fn)
 
 
@@ -148,7 +183,11 @@ def backtest_walk_forward(
     if not dates:
         raise HTTPException(status_code=502, detail="no price history returned for these tickers/dates")
 
-    score_fn = _score_for_backtest if strategy == "rba_snapshot" else None
+    score_fn = (
+        _pit_score_for_backtest if strategy == "rba_pit"
+        else _score_for_backtest if strategy == "rba_snapshot"
+        else None
+    )
     return run_walk_forward(
         req, strategy,
         n_windows=n_windows,
