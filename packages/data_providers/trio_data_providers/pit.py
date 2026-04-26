@@ -128,34 +128,189 @@ class MockPitProvider(PitProvider):
 
 
 class EdgarPitProvider(PitProvider):
-    """SEC EDGAR Companyfacts adapter (NOT YET IMPLEMENTED).
+    """SEC EDGAR Companyfacts adapter — point-in-time fundamentals from XBRL.
 
-    Wire-up notes for the follow-up:
-    - Endpoint: https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json
-    - User-Agent header REQUIRED (set TRIO_SEC_UA env, e.g. "Mailto user@example.com")
-    - CIK lookup via https://www.sec.gov/files/company_tickers.json
-    - For each filing, read `start`/`end`/`filed` dates; pick the most recent
-      facts whose `filed <= as_of` to avoid lookahead.
-    - Altman-Z components: WorkingCapital, RetainedEarnings, EBIT, Liabilities,
-      MarketCap (need price), Sales, TotalAssets — all in standard XBRL tags.
-    - dvd_yld_ind: trailing 12-month CommonStockDividendsPerShareDeclared / price.
-    - vol_avg_3m: not in EDGAR — pull from yfinance with as-of price slice.
-    - target_return + analyst_sent: NOT recoverable point-in-time from filings.
-      Fall back to today's snapshot and flag.
+    For each (ticker, as_of) we look up the CIK and pull the full Companyfacts
+    blob, then for each Altman-Z component we pick the most recent reported
+    value whose ``filed <= as_of`` — that's the no-lookahead invariant.
 
-    Until implemented, this raises so callers fail loud rather than silently
-    using synthetic data they thought was real.
+    Computes Altman Z' (private-firm variant) so we don't need a market-cap
+    component the API can't supply directly:
+
+        Z' = 0.717·WC/TA + 0.847·RE/TA + 3.107·EBIT/TA
+           + 0.420·BookValue/Liab + 0.998·Sales/TA
+
+    Trailing-12-month ``CommonStockDividendsPerShareDeclared`` divided by
+    ``BookValuePerShare`` (or fallback to ``StockholdersEquity / SharesOutstanding``)
+    gives an as-of dividend yield proxy.
+
+    Three BOS factors are NOT recoverable point-in-time from filings:
+    ``vol_avg_3m`` (price data, not financials), ``target_return`` (forward-
+    looking analyst), ``analyst_sent`` (forward-looking analyst). We surface
+    them as None and flag ``pit_unavailable`` per row — the BOS engine
+    handles missing factors as NEUTRAL contributions.
+
+    Networking + caching live in ``_edgar_client.py``. Set ``TRIO_SEC_UA``
+    env to your contact email per SEC rules.
     """
 
     name = "edgar_pit"
     label = "SEC EDGAR Companyfacts (point-in-time)"
 
+    # XBRL tags we consult. Tuples = (namespace, tag, unit, annual_only).
+    # Multiple tags per concept handle issuer-specific reporting differences.
+    _TAGS_TOTAL_ASSETS = [("us-gaap", "Assets", "USD", True)]
+    _TAGS_LIABILITIES = [("us-gaap", "Liabilities", "USD", True)]
+    _TAGS_CURRENT_ASSETS = [("us-gaap", "AssetsCurrent", "USD", True)]
+    _TAGS_CURRENT_LIAB = [("us-gaap", "LiabilitiesCurrent", "USD", True)]
+    _TAGS_RETAINED = [
+        ("us-gaap", "RetainedEarningsAccumulatedDeficit", "USD", True),
+    ]
+    _TAGS_EBIT = [
+        ("us-gaap", "OperatingIncomeLoss", "USD", True),
+        ("us-gaap", "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest", "USD", True),
+    ]
+    _TAGS_REVENUE = [
+        ("us-gaap", "Revenues", "USD", True),
+        ("us-gaap", "RevenueFromContractWithCustomerExcludingAssessedTax", "USD", True),
+        ("us-gaap", "SalesRevenueNet", "USD", True),
+    ]
+    _TAGS_EQUITY = [
+        ("us-gaap", "StockholdersEquity", "USD", True),
+        ("us-gaap", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest", "USD", True),
+    ]
+    _TAGS_SHARES_OUT = [
+        ("dei", "EntityCommonStockSharesOutstanding", "shares", False),
+    ]
+    _TAGS_DIVIDENDS_PS = [
+        ("us-gaap", "CommonStockDividendsPerShareDeclared", "USD/shares", False),
+    ]
+
+    def __init__(self, *, ttl_seconds: int = 24 * 3600) -> None:
+        self._ttl = ttl_seconds
+        self._ticker_map: dict[str, str] | None = None
+
+    def _ensure_map(self) -> dict[str, str]:
+        from . import _edgar_client as ec
+        if self._ticker_map is None:
+            self._ticker_map = ec.fetch_ticker_map(ttl_seconds=self._ttl)
+        return self._ticker_map
+
+    def _first_available(
+        self, facts: dict, candidates, as_of_iso: str
+    ):
+        """Try each (ns, tag, unit, annual_only) in order; return first hit."""
+        from . import _edgar_client as ec
+        for ns, tag, unit, annual in candidates:
+            point = ec.latest_as_of(
+                facts, namespace=ns, tag=tag, unit=unit,
+                as_of=as_of_iso, annual_only=annual,
+            )
+            if point is not None:
+                return point
+        return None
+
     def fetch_as_of(
         self, tickers: list[str], *, as_of: date, model: str
     ) -> PitResult:
-        raise NotImplementedError(
-            "EdgarPitProvider is a documented stub — wire up SEC Companyfacts before use. "
-            "See packages/data_providers/trio_data_providers/pit.py for the plan."
+        from . import _edgar_client as ec
+
+        as_of_iso = as_of.isoformat()
+        ticker_map = self._ensure_map()
+        rows: list[dict[str, Any]] = []
+        warnings: list[str] = []
+
+        for ticker_raw in tickers:
+            ticker = ticker_raw.upper()
+            row: dict[str, Any] = {
+                "ticker": ticker_raw,
+                "name": None,
+                "vol_avg_3m": None,
+                "target_return": None,
+                "analyst_sent": None,
+                "altman_z": None,
+                "dvd_yld_ind": None,
+            }
+            cik = ticker_map.get(ticker)
+            if cik is None:
+                row["_edgar_error"] = "cik_not_found"
+                rows.append(row)
+                continue
+            try:
+                facts = ec.fetch_companyfacts(cik, ttl_seconds=self._ttl)
+            except ec.EdgarError as e:
+                row["_edgar_error"] = f"fetch_failed: {e}"
+                rows.append(row)
+                continue
+
+            row["name"] = facts.get("entityName")
+
+            # --- Altman-Z' components ----------------------------------
+            ta = self._first_available(facts, self._TAGS_TOTAL_ASSETS, as_of_iso)
+            liab = self._first_available(facts, self._TAGS_LIABILITIES, as_of_iso)
+            ca = self._first_available(facts, self._TAGS_CURRENT_ASSETS, as_of_iso)
+            cl = self._first_available(facts, self._TAGS_CURRENT_LIAB, as_of_iso)
+            re_pt = self._first_available(facts, self._TAGS_RETAINED, as_of_iso)
+            ebit = self._first_available(facts, self._TAGS_EBIT, as_of_iso)
+            rev = self._first_available(facts, self._TAGS_REVENUE, as_of_iso)
+            eq = self._first_available(facts, self._TAGS_EQUITY, as_of_iso)
+
+            if all(p is not None for p in (ta, liab, ca, cl, re_pt, ebit, rev, eq)) and ta.val > 0 and liab.val > 0:
+                wc = ca.val - cl.val
+                z_prime = (
+                    0.717 * (wc / ta.val)
+                    + 0.847 * (re_pt.val / ta.val)
+                    + 3.107 * (ebit.val / ta.val)
+                    + 0.420 * (eq.val / liab.val)
+                    + 0.998 * (rev.val / ta.val)
+                )
+                row["altman_z"] = round(z_prime, 3)
+
+            # --- Annualized dividend yield -----------------------------
+            # XBRL CommonStockDividendsPerShareDeclared in 10-Q is reported
+            # YTD-cumulative (not stand-alone), so naive trailing-sum
+            # double-counts. Cleanest approach: pull the most recent 10-K
+            # FY value as the annualized DPS, divide by book-value-per-share.
+            ttm_dvd = None
+            for ns, tag, unit, _ in self._TAGS_DIVIDENDS_PS:
+                pt = ec.latest_as_of(
+                    facts, namespace=ns, tag=tag, unit=unit,
+                    as_of=as_of_iso, annual_only=True,
+                )
+                if pt is not None:
+                    ttm_dvd = pt.val
+                    break
+            shares = self._first_available(facts, self._TAGS_SHARES_OUT, as_of_iso)
+            if ttm_dvd is not None and eq is not None and shares is not None and shares.val > 0:
+                bvps = eq.val / shares.val
+                if bvps > 0:
+                    row["dvd_yld_ind"] = round(100.0 * ttm_dvd / bvps, 3)
+
+            rows.append(row)
+
+        warnings.append(
+            f"edgar_pit: {sum(1 for r in rows if r.get('_edgar_error'))} of {len(rows)} "
+            "tickers had no usable data (CIK not found or fetch failed)."
+        )
+        warnings.append(
+            "edgar_pit: vol_avg_3m, target_return, and analyst_sent are NOT "
+            "recoverable point-in-time from XBRL filings — those factors are "
+            "left None and treated as missing by the scoring engine."
+        )
+        warnings.append(
+            "edgar_pit: altman_z is computed as Altman Z' (private-firm "
+            "variant) using book-value of equity, not market cap — avoids "
+            "needing as-of price data."
+        )
+        warnings.append(
+            "edgar_pit: dvd_yld_ind here is most-recent-10-K dividend per "
+            "share / book-value per share — a BOOK yield, not market yield. "
+            "Biased upward when buybacks compress book value (e.g. AAPL). "
+            "Adding as-of price data would give a market yield; deferred."
+        )
+
+        return PitResult(
+            rows=rows, as_of=as_of, provider=self.name, warnings=warnings,
         )
 
 

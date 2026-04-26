@@ -65,12 +65,26 @@ date. No lookahead when paired with a real PIT provider. See
   carries a `synthetic_pit:` warning. Useful for demoing the architecture
   end-to-end without a paid feed.
 
-- **EdgarPitProvider** (skeleton) — SEC EDGAR Companyfacts adapter, not yet
-  implemented. The docstring spells out the wire-up: CIK lookup,
-  `User-Agent` header, `filed <= as_of` filtering for no-lookahead, mapping
-  XBRL tags to Altman-Z components, and the two factors (`analyst_sent`,
-  `target_return`) that genuinely cannot be recovered point-in-time from
-  filings.
+- **EdgarPitProvider** — SEC EDGAR Companyfacts adapter, **live**. Pulls
+  XBRL filings via `data.sec.gov`, maps tags to Altman-Z components,
+  filters by `filed <= as_of` for the no-lookahead invariant, and returns
+  one canonical row per ticker. US tickers only (CIK-based lookup).
+  Required env: `TRIO_SEC_UA="Mailto contact@example.com"` (SEC rule).
+  Cache lives at `~/.trio_cache/edgar/`, 24-hour TTL.
+
+  - `altman_z`: Altman **Z'** (private-firm variant), avoids needing
+    as-of market cap. Book-value-of-equity / liabilities replaces the
+    market-cap term. Returns None for issuers without current-asset /
+    current-liability reporting (e.g. banks).
+  - `dvd_yld_ind`: most-recent-10-K dividend-per-share ÷ book-value-per-share
+    — a **book** yield, not market yield. Biased upward when buybacks
+    compress BV (e.g. AAPL). A real market yield needs as-of price data
+    from yfinance; deferred.
+  - `vol_avg_3m`, `target_return`, `analyst_sent` are NOT in XBRL filings
+    and are returned as None — the BOS engine treats them as missing.
+
+  Switch in: set `TRIO_PIT_PROVIDER=edgar` in the API process env. Default
+  remains MockPitProvider (synthetic, deterministic).
 
 Inputs same as `rba_snapshot`: `model`, `top_n`, `rebalance_days`, `fee_bps`.
 Engine emits a `Rebalances: N; first selection ...` info warning.

@@ -28,7 +28,9 @@ from trio_backtester import (
 )
 from trio_backtester.data import fetch_history
 from trio_data_providers import (
+    EdgarPitProvider,
     MockPitProvider,
+    PitProvider,
     ProviderError,
     get_provider,
     list_providers,
@@ -119,7 +121,21 @@ def _score_for_backtest(tickers: list[str], model: str, _as_of) -> ScoreResponse
     return score_four_factor(res.rows, universe=res.universe)
 
 
-_pit_provider = MockPitProvider()
+def _make_pit_provider() -> PitProvider:
+    """Pick the PIT provider at startup.
+
+    Set ``TRIO_PIT_PROVIDER=edgar`` to use the real SEC EDGAR adapter (US
+    tickers only; requires ``TRIO_SEC_UA`` env to a contact email per SEC
+    rules). Default is the deterministic-synthetic MockPitProvider.
+    """
+    import os
+    choice = os.environ.get("TRIO_PIT_PROVIDER", "mock").lower()
+    if choice == "edgar":
+        return EdgarPitProvider()
+    return MockPitProvider()
+
+
+_pit_provider: PitProvider = _make_pit_provider()
 
 
 def _pit_score_for_backtest(tickers: list[str], model: str, as_of) -> ScoreResponse:

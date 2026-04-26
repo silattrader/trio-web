@@ -259,9 +259,11 @@ def test_mock_pit_provider_drifts_over_time():
     assert early["ticker"] == late["ticker"] == "AAPL"
 
 
-def test_edgar_pit_is_a_documented_stub():
-    with pytest.raises(NotImplementedError):
-        EdgarPitProvider().fetch_as_of(["AAPL"], as_of=date(2024, 1, 1), model="bos")
+def test_edgar_pit_provider_constructs():
+    """Sanity: EdgarPitProvider instantiates without network. (Real fetching
+    is exercised in test_edgar_pit.py with mocked HTTP.)"""
+    p = EdgarPitProvider()
+    assert p.name == "edgar_pit"
 
 
 def test_engine_rba_pit_rebalances_per_window():
