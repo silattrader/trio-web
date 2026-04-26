@@ -56,7 +56,8 @@ def test_score_mla_returns_same_contract_as_bos():
     for r in mla.results:
         assert r.ticker
         assert r.recommendation is not None
-        assert len(r.factors) == 5
+        # MLA v0+ has 7 factors (BOS 5 + insider_flow + retail_flow).
+        assert len(r.factors) == 7
     assert mla.model_version == "mla-v0.1.0"
 
 

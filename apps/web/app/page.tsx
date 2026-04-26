@@ -37,10 +37,11 @@ export default function Home() {
         <LiveUniverseCard onResult={handleResult} />
       </div>
 
-      {resp && modelId === "bos" && lastRows.length > 0 && (
+      {resp && (modelId === "bos" || modelId === "bos_flow") && lastRows.length > 0 && (
         <WeightSliders
           rows={lastRows}
           universe={lastUniverse}
+          modelId={modelId}
           onRescore={(r) => {
             setResp(r);
             setPicked(null);

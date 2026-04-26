@@ -35,13 +35,27 @@ const ALIASES: Record<ModelId, Record<string, string>> = {
     FIVE_YR_AVG_PRICE_EARNINGS: "pe_5yr_avg",
     LONG_COMP_NAME: "name",
   },
-  // MLA v0 reads the same 5 features as BOS — alias map is identical.
+  // MLA v0 reads the 5 BOS features + 2 flow features (insider/retail).
+  // Flow factors are only populated by live providers (PIT path), not CSV.
   mla_v0: {
     VOLUME_AVG_3M: "vol_avg_3m",
     RETURN: "target_return",
     EQY_DVD_YLD_IND: "dvd_yld_ind",
     ALTMAN_Z_SCORE: "altman_z",
     EQY_REC_CONS: "analyst_sent",
+    INSIDER_FLOW: "insider_flow",
+    RETAIL_FLOW: "retail_flow",
+    LONG_COMP_NAME: "name",
+  },
+  // BOS-Flow shares MLA's column set: classic BOS + insider + retail flow.
+  bos_flow: {
+    VOLUME_AVG_3M: "vol_avg_3m",
+    RETURN: "target_return",
+    EQY_DVD_YLD_IND: "dvd_yld_ind",
+    ALTMAN_Z_SCORE: "altman_z",
+    EQY_REC_CONS: "analyst_sent",
+    INSIDER_FLOW: "insider_flow",
+    RETAIL_FLOW: "retail_flow",
     LONG_COMP_NAME: "name",
   },
 };

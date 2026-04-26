@@ -12,7 +12,7 @@ def test_health():
 def test_models_lists_rba_and_mla():
     data = client.get("/models").json()
     ids = [m["id"] for m in data["rba"]]
-    assert ids == ["bos", "mos", "four_factor"]
+    assert ids == ["bos", "bos_flow", "mos", "four_factor"]
     mla_ids = [m["id"] for m in data["mla"]]
     assert mla_ids == ["mla_v0"]
 

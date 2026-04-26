@@ -41,7 +41,7 @@ export interface ScoreResponse {
   warnings: string[];
 }
 
-export type ModelId = "bos" | "mos" | "four_factor" | "mla_v0";
+export type ModelId = "bos" | "bos_flow" | "mos" | "four_factor" | "mla_v0";
 
 export interface BosWeights {
   f1_volume: number;
@@ -57,6 +57,26 @@ export const CANONICAL_BOS_WEIGHTS: BosWeights = {
   f3_dvd_yld: 0.20,
   f4_altman_z: 0.30,
   f5_analyst_sent: 0.10,
+};
+
+export interface BosFlowWeights {
+  f1_volume: number;
+  f2_target: number;
+  f3_dvd_yld: number;
+  f4_altman_z: number;
+  f5_analyst_sent: number;
+  f6_insider_flow: number;
+  f7_retail_flow: number;
+}
+
+export const CANONICAL_BOS_FLOW_WEIGHTS: BosFlowWeights = {
+  f1_volume: 0.15,
+  f2_target: 0.15,
+  f3_dvd_yld: 0.15,
+  f4_altman_z: 0.20,
+  f5_analyst_sent: 0.10,
+  f6_insider_flow: 0.15,
+  f7_retail_flow: 0.10,
 };
 
 export type ProviderId = "yfinance" | "tradingview" | "i3investor" | "bloomberg";
@@ -195,13 +215,19 @@ export async function score(
   model: ModelId,
   universe: string,
   rows: Record<string, unknown>[],
-  opts: { legacy?: boolean; bosWeights?: BosWeights } = {}
+  opts: {
+    legacy?: boolean;
+    bosWeights?: BosWeights;
+    bosFlowWeights?: BosFlowWeights;
+  } = {}
 ): Promise<ScoreResponse> {
   const qs = new URLSearchParams({ model });
   if (opts.legacy) qs.set("legacy", "true");
 
   const body: Record<string, unknown> = { universe, rows };
   if (opts.bosWeights && model === "bos") body.bos_weights = opts.bosWeights;
+  if (opts.bosFlowWeights && model === "bos_flow")
+    body.bos_flow_weights = opts.bosFlowWeights;
 
   const res = await fetch(`/api/score?${qs.toString()}`, {
     method: "POST",

@@ -81,6 +81,44 @@ class BosWeights(BaseModel):
         )
 
 
+class BosFlowWeights(BaseModel):
+    """Per-factor weights for the BOS-Flow engine (7 factors).
+
+    Adds insider_flow + retail_flow on top of canonical BOS. Defaults bias
+    toward the established BOS factors but give flow signals real weight:
+        F1=0.15 F2=0.15 F3=0.15 F4=0.20 F5=0.10 F6=0.15 F7=0.10  (sum=1.00)
+    Sum is normalised to 1.0 before scoring; the UI can pass raw drag values.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    f1_volume: float = Field(default=0.15, ge=0)
+    f2_target: float = Field(default=0.15, ge=0)
+    f3_dvd_yld: float = Field(default=0.15, ge=0)
+    f4_altman_z: float = Field(default=0.20, ge=0)
+    f5_analyst_sent: float = Field(default=0.10, ge=0)
+    f6_insider_flow: float = Field(default=0.15, ge=0)
+    f7_retail_flow: float = Field(default=0.10, ge=0)
+
+    def normalised(self) -> "BosFlowWeights":
+        total = (
+            self.f1_volume + self.f2_target + self.f3_dvd_yld
+            + self.f4_altman_z + self.f5_analyst_sent
+            + self.f6_insider_flow + self.f7_retail_flow
+        )
+        if total <= 0:
+            return BosFlowWeights()
+        return BosFlowWeights(
+            f1_volume=self.f1_volume / total,
+            f2_target=self.f2_target / total,
+            f3_dvd_yld=self.f3_dvd_yld / total,
+            f4_altman_z=self.f4_altman_z / total,
+            f5_analyst_sent=self.f5_analyst_sent / total,
+            f6_insider_flow=self.f6_insider_flow / total,
+            f7_retail_flow=self.f7_retail_flow / total,
+        )
+
+
 class ScoreRequest(BaseModel):
     """Generic request — universe-agnostic. Each row is a dict of canonical fields."""
 
@@ -91,7 +129,11 @@ class ScoreRequest(BaseModel):
     options: dict[str, Any] = Field(default_factory=dict)
     bos_weights: BosWeights | None = Field(
         default=None,
-        description="Optional override for BOS factor weights. Ignored by MOS/4F.",
+        description="Optional override for BOS factor weights. Ignored by MOS/4F/bos_flow.",
+    )
+    bos_flow_weights: BosFlowWeights | None = Field(
+        default=None,
+        description="Optional override for BOS-Flow factor weights. Ignored by other models.",
     )
 
 

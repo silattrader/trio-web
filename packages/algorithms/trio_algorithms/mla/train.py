@@ -41,6 +41,8 @@ def _synth_row(rng: random.Random) -> dict:
         "dvd_yld_ind": max(0.0, rng.gauss(3.5, 2.5)),
         "altman_z": max(0.2, rng.gauss(2.0, 1.0)),
         "analyst_sent": min(5.0, max(1.0, rng.gauss(3.5, 0.7))),
+        "insider_flow": min(5.0, max(1.0, rng.gauss(3.0, 0.8))),
+        "retail_flow": min(5.0, max(1.0, rng.gauss(3.0, 0.5))),
     }
 
 
@@ -51,6 +53,12 @@ def _alpha_term(row: dict) -> float:
         bonus += 0.6
     if row["altman_z"] < 1 and row["target_return"] < 0:
         bonus -= 0.5
+    # Flow signals: insiders buying + retail not piling in is bullish.
+    if row.get("insider_flow", 3) >= 4 and row.get("retail_flow", 3) >= 3:
+        bonus += 0.4
+    # Retail attention spike with weak fundamentals → fade.
+    if row.get("retail_flow", 3) <= 2 and row.get("altman_z", 2) < 1.5:
+        bonus -= 0.3
     return bonus
 
 

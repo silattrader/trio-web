@@ -15,6 +15,7 @@ from trio_algorithms import (
     ScoreRequest,
     ScoreResponse,
     score_bos,
+    score_bos_flow,
     score_four_factor,
     score_mla_v0,
     score_mos,
@@ -40,7 +41,7 @@ from trio_data_providers import (
     list_providers,
 )
 
-ModelName = Literal["bos", "mos", "four_factor", "mla_v0"]
+ModelName = Literal["bos", "bos_flow", "mos", "four_factor", "mla_v0"]
 
 app = FastAPI(
     title="TRIO Web API",
@@ -66,6 +67,7 @@ def list_models() -> dict:
     return {
         "rba": [
             {"id": "bos", "version": "rba-bos-1.0.0", "label": "5-Factor Buy-or-Sell"},
+            {"id": "bos_flow", "version": "rba-bos-flow-1.0.0", "label": "7-Factor BOS-Flow (BOS + insider + retail)"},
             {"id": "mos", "version": "rba-mos-1.0.0", "label": "Margin-of-Safety (Graham)"},
             {"id": "four_factor", "version": "rba-four-factor-1.0.0", "label": "4-Factor Legacy"},
         ],
@@ -86,6 +88,10 @@ def score(
 
     if model == "bos":
         return score_bos(req.rows, universe=req.universe, weights=req.bos_weights)
+    if model == "bos_flow":
+        return score_bos_flow(
+            req.rows, universe=req.universe, weights=req.bos_flow_weights,
+        )
     if model == "mos":
         return score_mos(req.rows, universe=req.universe)
     if model == "four_factor":

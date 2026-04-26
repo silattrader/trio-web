@@ -2,46 +2,64 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  CANONICAL_BOS_FLOW_WEIGHTS,
   CANONICAL_BOS_WEIGHTS,
   score,
+  type BosFlowWeights,
   type BosWeights,
+  type ModelId,
   type ScoreResponse,
 } from "@/lib/api";
 
 interface Props {
   rows: Record<string, unknown>[];
   universe: string;
+  modelId: ModelId;     // "bos" or "bos_flow"
   onRescore: (resp: ScoreResponse) => void;
 }
 
-const FACTORS: { key: keyof BosWeights; label: string; hint: string }[] = [
-  { key: "f1_volume",      label: "F1 — Volume Avg 3M",     hint: "Liquidity floor" },
-  { key: "f2_target",      label: "F2 — Target Return %",   hint: "Analyst upside" },
-  { key: "f3_dvd_yld",     label: "F3 — Dividend Yield %",  hint: "Income tilt" },
-  { key: "f4_altman_z",    label: "F4 — Altman Z-Score",    hint: "Bankruptcy risk" },
+const BOS_FACTORS: { key: keyof BosWeights; label: string; hint: string }[] = [
+  { key: "f1_volume",       label: "F1 — Volume Avg 3M",     hint: "Liquidity floor" },
+  { key: "f2_target",       label: "F2 — Target Return %",   hint: "Analyst upside" },
+  { key: "f3_dvd_yld",      label: "F3 — Dividend Yield %",  hint: "Income tilt" },
+  { key: "f4_altman_z",     label: "F4 — Altman Z-Score",    hint: "Bankruptcy risk" },
   { key: "f5_analyst_sent", label: "F5 — Analyst Sentiment", hint: "Consensus call" },
 ];
 
-function normalise(w: BosWeights): BosWeights {
-  const total =
-    w.f1_volume + w.f2_target + w.f3_dvd_yld + w.f4_altman_z + w.f5_analyst_sent;
-  if (total <= 0) return { ...CANONICAL_BOS_WEIGHTS };
-  return {
-    f1_volume: w.f1_volume / total,
-    f2_target: w.f2_target / total,
-    f3_dvd_yld: w.f3_dvd_yld / total,
-    f4_altman_z: w.f4_altman_z / total,
-    f5_analyst_sent: w.f5_analyst_sent / total,
-  };
+const FLOW_FACTORS: { key: keyof BosFlowWeights; label: string; hint: string }[] = [
+  ...BOS_FACTORS,
+  { key: "f6_insider_flow", label: "F6 — Insider Flow",      hint: "Form 4 net buying" },
+  { key: "f7_retail_flow",  label: "F7 — Retail Flow",       hint: "Wikipedia attention (contrarian)" },
+];
+
+function sumWeights(w: Record<string, number>): number {
+  return Object.values(w).reduce((acc, v) => acc + v, 0);
 }
 
-export function WeightSliders({ rows, universe, onRescore }: Props) {
-  const [weights, setWeights] = useState<BosWeights>({ ...CANONICAL_BOS_WEIGHTS });
+function normalise<T extends Record<string, number>>(w: T, fallback: T): T {
+  const total = sumWeights(w);
+  if (total <= 0) return { ...fallback };
+  const out: Record<string, number> = {};
+  for (const k of Object.keys(w)) out[k] = w[k] / total;
+  return out as T;
+}
+
+export function WeightSliders({ rows, universe, modelId, onRescore }: Props) {
+  const isFlow = modelId === "bos_flow";
+  const canonical = isFlow ? CANONICAL_BOS_FLOW_WEIGHTS : CANONICAL_BOS_WEIGHTS;
+  const factors = isFlow ? FLOW_FACTORS : BOS_FACTORS;
+
+  const [weights, setWeights] = useState<Record<string, number>>({ ...canonical });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isCanonical =
-    JSON.stringify(weights) === JSON.stringify(CANONICAL_BOS_WEIGHTS);
+
+  // Reset weights to the model's canonical defaults when the model changes.
+  useEffect(() => {
+    setWeights({ ...canonical });
+  }, [modelId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const isCanonical = JSON.stringify(weights) === JSON.stringify(canonical);
 
   useEffect(() => {
     if (isCanonical) return;
@@ -50,7 +68,10 @@ export function WeightSliders({ rows, universe, onRescore }: Props) {
       setBusy(true);
       setError(null);
       try {
-        const resp = await score("bos", universe, rows, { bosWeights: weights });
+        const opts = isFlow
+          ? { bosFlowWeights: weights as unknown as BosFlowWeights }
+          : { bosWeights: weights as unknown as BosWeights };
+        const resp = await score(modelId, universe, rows, opts);
         onRescore(resp);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -61,24 +82,26 @@ export function WeightSliders({ rows, universe, onRescore }: Props) {
     return () => {
       if (debounce.current) clearTimeout(debounce.current);
     };
-  }, [weights, rows, universe, onRescore, isCanonical]);
+  }, [weights, rows, universe, onRescore, isCanonical, isFlow, modelId]);
 
-  const normalised = normalise(weights);
+  const normalised = normalise(weights, canonical as unknown as Record<string, number>);
+  const label = isFlow ? "BOS-Flow (7 factors)" : "BOS (5 factors)";
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-6">
       <div className="flex items-baseline justify-between">
         <h2 className="text-base font-semibold text-ink">
-          Tune factor weights <span className="font-normal text-slate-500">(BOS only)</span>
+          Tune factor weights{" "}
+          <span className="font-normal text-slate-500">— {label}</span>
         </h2>
         <button
           type="button"
           onClick={async () => {
-            setWeights({ ...CANONICAL_BOS_WEIGHTS });
+            setWeights({ ...canonical });
             setBusy(true);
             setError(null);
             try {
-              const resp = await score("bos", universe, rows);
+              const resp = await score(modelId, universe, rows);
               onRescore(resp);
             } catch (e) {
               setError(e instanceof Error ? e.message : String(e));
@@ -94,15 +117,16 @@ export function WeightSliders({ rows, universe, onRescore }: Props) {
       </div>
       <p className="mt-1 text-xs text-slate-500">
         Drag any slider to re-weight the engine. Raw values are normalised so they
-        always sum to 100%. {busy && <span className="ml-1 text-trust">Re-scoring…</span>}
+        always sum to 100%.{" "}
+        {busy && <span className="ml-1 text-trust">Re-scoring…</span>}
       </p>
 
       <div className="mt-4 space-y-3">
-        {FACTORS.map((f) => {
-          const raw = weights[f.key];
-          const pct = normalised[f.key] * 100;
+        {factors.map((f) => {
+          const raw = weights[f.key as string] ?? 0;
+          const pct = (normalised[f.key as string] ?? 0) * 100;
           return (
-            <div key={f.key}>
+            <div key={f.key as string}>
               <div className="flex items-baseline justify-between text-xs">
                 <span className="font-medium text-slate-700">
                   {f.label}{" "}
@@ -119,7 +143,7 @@ export function WeightSliders({ rows, universe, onRescore }: Props) {
                 step={0.01}
                 value={raw}
                 onChange={(e) =>
-                  setWeights((w) => ({ ...w, [f.key]: Number(e.target.value) }))
+                  setWeights((w) => ({ ...w, [f.key as string]: Number(e.target.value) }))
                 }
                 className="mt-1 w-full accent-trust"
               />

@@ -35,14 +35,20 @@ _FACTOR_LABELS = {
     "dvd_yld_ind": "Dividend Yield %",
     "altman_z": "Altman Z-Score",
     "analyst_sent": "Analyst Sentiment",
+    "insider_flow": "Insider Flow",
+    "retail_flow": "Retail Flow",
 }
 
-# Forward-looking factors that aren't in XBRL filings. When PIT data is
-# the input, these will be missing — score_mla_v0 substitutes the same
-# placeholders the training pipeline uses so inference matches training.
+# Factors that may be missing from a PIT input row. Score_mla_v0 substitutes
+# the same placeholder the training pipeline uses so inference matches train.
+# - target_return / analyst_sent: forward-looking analyst data, often None
+#   when FmpPitProvider is not enabled.
+# - insider_flow / retail_flow: missing when no CIK/Wikipedia mapping exists.
 _PIT_PLACEHOLDERS: dict[str, float] = {
     "target_return": 0.0,
     "analyst_sent": 3.0,
+    "insider_flow": 3.0,   # neutral
+    "retail_flow": 3.0,    # neutral
 }
 
 _cached: MlaScorer | None = None

@@ -134,11 +134,25 @@ def build_pit_dataset(
     fetch_end = end + timedelta(days=120)
 
     from trio_backtester.data import fetch_history, fetch_volume_history
-    from trio_data_providers import EdgarPitProvider
+    from trio_data_providers import (
+        EdgarPitProvider,
+        InsiderFlowPitProvider,
+        MergedPitProvider,
+        RetailFlowPitProvider,
+    )
 
     _, prices = fetch_history(universe, fetch_start, fetch_end)
     volumes = fetch_volume_history(universe, fetch_start, fetch_end)
-    pit = EdgarPitProvider()
+    # Compose: EDGAR (3 fundamental factors) + insider flow + retail flow.
+    # FMP is intentionally excluded here — its free tier is too thin for a
+    # multi-quarter walk over 28 tickers; placeholders fill target_return +
+    # analyst_sent (matching inference time).
+    edgar = EdgarPitProvider()
+    pit = MergedPitProvider([
+        edgar,
+        InsiderFlowPitProvider(edgar_pit=edgar),
+        RetailFlowPitProvider(),
+    ])
 
     samples: list[PitSample] = []
     for as_of in snapshots:
@@ -151,19 +165,22 @@ def build_pit_dataset(
             forward = _forward_return(
                 prices.get(t, {}), as_of, forward_days,
             )
-            # Substitute placeholders for the 2 unknown features so the
-            # column shape stays consistent. Marked in `note`.
+            # 7 features. target_return + analyst_sent stay placeholders
+            # unless an FMP-enabled pipeline supplies them. insider_flow +
+            # retail_flow are real PIT scores from EDGAR Form 4 + Wikipedia.
             features = {
                 "vol_avg_3m": row.get("vol_avg_3m"),
-                "target_return": 0.0,
+                "target_return": row.get("target_return") if row.get("target_return") is not None else 0.0,
                 "dvd_yld_ind": row.get("dvd_yld_ind"),
                 "altman_z": row.get("altman_z"),
-                "analyst_sent": 3.0,  # neutral mid-point
+                "analyst_sent": row.get("analyst_sent") if row.get("analyst_sent") is not None else 3.0,
+                "insider_flow": row.get("insider_flow") if row.get("insider_flow") is not None else 3.0,
+                "retail_flow": row.get("retail_flow") if row.get("retail_flow") is not None else 3.0,
             }
             samples.append(PitSample(
                 ticker=t, as_of=as_of, features=features,
                 forward_return=forward,
-                note="target_return + analyst_sent placeholders (forward-looking analyst data not in XBRL)",
+                note="target_return + analyst_sent placeholders unless FMP wired; insider/retail real PIT",
             ))
 
     if cache_path is not None:

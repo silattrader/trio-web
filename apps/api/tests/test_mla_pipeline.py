@@ -50,28 +50,19 @@ def test_forward_return_returns_none_when_horizon_missing():
 
 
 def test_to_xy_drops_samples_with_missing_features():
+    full = {"vol_avg_3m": 1e6, "target_return": 5.0,
+            "dvd_yld_ind": 3.0, "altman_z": 2.5, "analyst_sent": 4.0,
+            "insider_flow": 3.0, "retail_flow": 3.0}
     samples = [
-        PitSample(
-            ticker="A", as_of=date(2020, 3, 31),
-            features={"vol_avg_3m": 1e6, "target_return": 5.0,
-                      "dvd_yld_ind": 3.0, "altman_z": 2.5, "analyst_sent": 4.0},
-            forward_return=0.05,
-        ),
-        PitSample(
-            ticker="B", as_of=date(2020, 3, 31),
-            features={"vol_avg_3m": None, "target_return": 5.0,
-                      "dvd_yld_ind": 3.0, "altman_z": 2.5, "analyst_sent": 4.0},
-            forward_return=0.05,
-        ),
-        PitSample(
-            ticker="C", as_of=date(2020, 3, 31),
-            features={"vol_avg_3m": 1e6, "target_return": 5.0,
-                      "dvd_yld_ind": 3.0, "altman_z": 2.5, "analyst_sent": 4.0},
-            forward_return=None,  # no label
-        ),
+        PitSample(ticker="A", as_of=date(2020, 3, 31),
+                  features=dict(full), forward_return=0.05),
+        PitSample(ticker="B", as_of=date(2020, 3, 31),
+                  features={**full, "vol_avg_3m": None}, forward_return=0.05),
+        PitSample(ticker="C", as_of=date(2020, 3, 31),
+                  features=dict(full), forward_return=None),  # no label
     ]
     X, y, kept = to_xy(samples)
-    assert X.shape == (1, 5)
+    assert X.shape == (1, 7)
     assert len(kept) == 1 and kept[0].ticker == "A"
 
 

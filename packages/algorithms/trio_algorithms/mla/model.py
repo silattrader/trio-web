@@ -24,6 +24,8 @@ FEATURE_ORDER = [
     "dvd_yld_ind",
     "altman_z",
     "analyst_sent",
+    "insider_flow",
+    "retail_flow",
 ]
 
 
