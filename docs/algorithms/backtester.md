@@ -87,10 +87,33 @@ date. No lookahead when paired with a real PIT provider. See
   - `vol_avg_3m`: when `volumes=` is supplied, computed as the 63-day
     rolling mean of daily volume ending at as_of. Otherwise None.
   - `target_return`, `analyst_sent`: forward-looking analyst data, not in
-    XBRL filings — always None. The BOS engine treats them as missing.
+    XBRL filings — always None unless paired with FmpPitProvider via
+    `MergedPitProvider` (see below).
 
-  Switch in: set `TRIO_PIT_PROVIDER=edgar` in the API process env. Default
-  remains MockPitProvider (synthetic, deterministic).
+- **FmpPitProvider** — Financial Modeling Prep adapter for the two
+  forward-looking factors EDGAR can't supply. Free key required at
+  `TRIO_FMP_KEY`; sign up at financialmodelingprep.com (250 req/day).
+  - `target_return` = (mean of analyst price targets in trailing 90d
+    ending at as_of) ÷ as-of price − 1, ×100.
+  - `analyst_sent` = mean of upgrade/downgrade `newGrade` mapped via
+    `GRADE_TO_SCORE` to the BOS 1–5 scale, over trailing 90d.
+  - Free-tier coverage on `/price-target` and `/upgrades-downgrades` may
+    cap historical depth — sparse for `as_of` dates pre-2022. Each row
+    carries `_fmp_targets` / `_fmp_ratings` counts so callers see how
+    many records actually fed the consensus.
+
+- **MergedPitProvider** — composes multiple PitProviders into one row
+  stream, last-non-None-wins. Standard config:
+  `MergedPitProvider([EdgarPitProvider(), FmpPitProvider()])` →
+  altman_z + dvd_yld_ind + vol_avg_3m from EDGAR/yfinance, target_return
+  + analyst_sent from FMP, all PIT-honest, full 5-of-5 BOS coverage.
+  Coverage summary appears as the first warning on every result.
+
+  Switch via `TRIO_PIT_PROVIDER` env in the API process:
+  - `mock` (default) — synthetic deterministic
+  - `edgar` — 3-of-5 PIT factors (US-only)
+  - `fmp` — analyst factors only
+  - `edgar+fmp` — full 5-of-5 PIT (needs both `TRIO_SEC_UA` and `TRIO_FMP_KEY`)
 
 Inputs same as `rba_snapshot`: `model`, `top_n`, `rebalance_days`, `fee_bps`.
 Engine emits a `Rebalances: N; first selection ...` info warning.

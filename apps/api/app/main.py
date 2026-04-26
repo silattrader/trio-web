@@ -29,6 +29,8 @@ from trio_backtester import (
 from trio_backtester.data import fetch_history, fetch_volume_history
 from trio_data_providers import (
     EdgarPitProvider,
+    FmpPitProvider,
+    MergedPitProvider,
     MockPitProvider,
     PitProvider,
     ProviderError,
@@ -122,16 +124,26 @@ def _score_for_backtest(tickers: list[str], model: str, _as_of) -> ScoreResponse
 
 
 def _make_pit_provider() -> PitProvider:
-    """Pick the PIT provider at startup.
+    """Pick the PIT provider at startup via ``TRIO_PIT_PROVIDER`` env.
 
-    Set ``TRIO_PIT_PROVIDER=edgar`` to use the real SEC EDGAR adapter (US
-    tickers only; requires ``TRIO_SEC_UA`` env to a contact email per SEC
-    rules). Default is the deterministic-synthetic MockPitProvider.
+    Options:
+    - ``mock``   (default) — MockPitProvider, deterministic synthetic.
+    - ``edgar``  — real SEC EDGAR adapter (3 of 5 BOS factors, US-only).
+                   Requires ``TRIO_SEC_UA`` env (contact email).
+    - ``edgar+fmp`` — Merged EDGAR + Financial Modeling Prep → all 5 BOS
+                     factors PIT-honest. Requires ``TRIO_SEC_UA`` and
+                     ``TRIO_FMP_KEY`` env vars.
+    - ``fmp``    — FMP only (analyst factors only; vol_avg_3m & altman_z
+                   stay None). Mostly useful for testing the FMP wiring.
     """
     import os
     choice = os.environ.get("TRIO_PIT_PROVIDER", "mock").lower()
+    if choice == "edgar+fmp":
+        return MergedPitProvider([EdgarPitProvider(), FmpPitProvider()])
     if choice == "edgar":
         return EdgarPitProvider()
+    if choice == "fmp":
+        return FmpPitProvider()
     return MockPitProvider()
 
 
