@@ -8,8 +8,8 @@
 [![Tests](https://img.shields.io/badge/pytest-128_passing-brightgreen)](#tests)
 [![Decision support only — not investment advice](https://img.shields.io/badge/disclaimer-not_investment_advice-amber)](#disclaimer)
 
-**Live demo:** _[deploying — link goes here once Vercel + Render are wired]_
-**Open source:** github.com/silattrader/trio-web
+**Live demo:** _coming soon — see [docs/DEPLOY.md](docs/DEPLOY.md)_
+**Open source:** [github.com/silattrader/trio-web](https://github.com/silattrader/trio-web) (public, MIT)
 
 ---
 
