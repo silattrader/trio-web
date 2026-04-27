@@ -50,7 +50,50 @@ there's no double-fetch.
 
 ## What's deferred
 
-### 13F-HR — institutional positions (NOT YET WIRED)
+### 13F-HR — institutional positions (WIRED 2026-04-27)
+
+`ThirteenFPitProvider` reports per-ticker, per-quarter aggregated 13F
+holdings. Three new fields land on canonical rows:
+
+- `inst_value_usd` — total $ held by all 13F filers in the most recently
+  available quarter
+- `inst_n_filers` — number of distinct filers reporting the ticker
+- `inst_concentration_score` — 1-5 BOS scale on filer-count thresholds:
+
+```
+n_filers ≥ 1000  → 5.0  (extreme institutional crowding — contrarian flag)
+≥ 250            → 4.0  (consensus large-cap)
+≥ 50             → 3.0  (broad-mid)
+≥ 5              → 2.0  (low-coverage)
+<  5             → 1.0  (orphan / micro)
+```
+
+Implementation:
+
+- `_thirteenf_client.py` downloads SEC's bulk dataset (`form-13f-data-sets`),
+  parses INFOTABLE.tsv, aggregates per CUSIP. Cached as JSON
+  (~1 MB) so subsequent calls don't re-pull the ZIP (~50–200 MB).
+- `cusip_map.py` carries a hand-curated CUSIP↔ticker map for the curated
+  US universe. CUSIP licensing prevents redistributing the master file —
+  extending the map for new tickers takes ~1 minute per ticker (read the
+  CUSIP off the issuer's most recent 10-K cover page).
+- Quarter routing: provider auto-selects the most recent quarter whose
+  end-date is ≥60 days before `as_of` (covers 45-day filing lag + ~15-day
+  SEC publication lag).
+
+Honest limits (in code + docs):
+- **Absolute concentration only**, not Δ-from-prior-quarter. Real institutional
+  alpha signal is the **change** in concentration; this is the simpler base
+  metric. Δ-scoring is the natural follow-up.
+- CUSIP map is hand-curated (28 names today). Tickers without a CUSIP
+  entry return None; the factor flags as missing in MergedPitProvider.
+- Doesn't distinguish long-only from option overlays — 13F-HR aggregates
+  everything except long puts.
+
+Composes via `MergedPitProvider([..., ThirteenFPitProvider()])`. Adds
+three diagnostic fields per row; existing 7 BOS-Flow factors stay
+unchanged. The factor is consumable by a future `bos_flow_v2` engine that
+treats institutional concentration as F8.
 
 **The signal:** every fund > $100M in AUM must file a 13F-HR within 45 days
 of each calendar quarter-end, listing all reportable holdings. Aggregating
