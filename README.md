@@ -8,9 +8,27 @@
 [![Tests](https://img.shields.io/badge/pytest-128_passing-brightgreen)](#tests)
 [![Decision support only — not investment advice](https://img.shields.io/badge/disclaimer-not_investment_advice-amber)](#disclaimer)
 
-**Live demo:** _coming soon — see [docs/DEPLOY.md](docs/DEPLOY.md)_
+**Live demo:** _coming soon — see [docs/DEPLOY.md](docs/DEPLOY.md)_  <!-- LIVE_URL: replace this line with `**Live demo:** https://your-app.vercel.app` once deployed -->
 **Video walkthrough:** [docs/demo.mp4](docs/demo.mp4) (53 s · 1280×720 · captioned)
 **Open source:** [github.com/silattrader/trio-web](https://github.com/silattrader/trio-web) (public, MIT)
+
+## Deploy in 3 minutes
+
+1. **API to Render** (free tier, ~3 min build, ~30s cold-start after idle):
+
+   [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2Fsilattrader%2Ftrio-web)
+
+   Render reads [`render.yaml`](render.yaml) and auto-provisions. After build, set `TRIO_SEC_UA` and `TRIO_WIKI_UA` env vars to your contact email (recommended). Copy the resulting `https://trio-api-*.onrender.com` URL — you need it for step 2.
+
+2. **Web UI to Vercel** (free tier, ~1 min build):
+
+   [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fsilattrader%2Ftrio-web&root-directory=apps%2Fweb&env=NEXT_PUBLIC_API_URL&envDescription=Render%20API%20URL%20from%20step%201)
+
+   Vercel auto-detects Next.js. **Set `NEXT_PUBLIC_API_URL` to the Render URL from step 1 BEFORE clicking Deploy** — it's a build-time variable.
+
+3. Visit the Vercel URL → click "Try sample" → working watchlist in <1 second.
+
+Full step-by-step + custom-domain instructions in [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
 ---
 

@@ -222,6 +222,85 @@ underperformance in 2021-H1.
   factors' natural decay may want 30 or 180).
 - **Different rebalance cadences** (here: every 63 days, top-5).
 
+## SHAP analysis of the active artifact (2026-04-27)
+
+`scripts/shap_analysis.py` — TreeExplainer over the 284 PIT training
+samples — answers the open question of whether the 7-factor model
+*actually uses* the flow factors:
+
+| Rank | Feature | Mean \|SHAP\| | % of total |
+|------|---------|---------------|------------|
+| 1 | `vol_avg_3m` | 0.0341 | **39.6%** |
+| 2 | `dvd_yld_ind` | 0.0313 | **36.4%** |
+| 3 | `altman_z` | 0.0150 | 17.4% |
+| 4 | `insider_flow` | 0.0031 | 3.6% |
+| 5 | `retail_flow` | 0.0026 | 3.1% |
+| 6 | `target_return` | **0.0000** | **0.0%** — dead weight |
+| 7 | `analyst_sent` | **0.0000** | **0.0%** — dead weight |
+
+### Three findings, each material
+
+#### 1. `target_return` and `analyst_sent` carry literally zero model weight.
+
+That's not the model failing to learn. It's the model correctly learning
+to ignore them, because in the training pipeline `FmpPitProvider` isn't
+enabled — those columns are filled with placeholder constants (0.0 for
+target_return, 3.0 for analyst_sent). Constant-valued features have zero
+variance, and a tree-based model assigns them zero importance.
+
+The architecture is 7-factor; the *information content* is effectively
+**5-factor**. To actually exercise these two slots, the training pipeline
+needs FmpPitProvider in the merge stack — and `TRIO_FMP_KEY` set during
+training. Today's free-tier setup can't sustain that across a multi-quarter
+walk for a 28-stock universe.
+
+#### 2. The flow factors aren't dead — but they're not drivers either.
+
+`insider_flow` (3.6%) and `retail_flow` (3.1%) together carry **6.7%** of
+total importance. That's modest. Three plausible reasons:
+
+- **US mega-caps are a flow-noisy universe.** Insider activity on AAPL is
+  drowned by daily $-volume that no individual filer can move.
+- **The 90-day flow lookback may be too long for 63-day forward returns.**
+- **Flow signals may be more predictive on small/mid-caps** where the
+  signal-to-noise ratio is higher. Re-running on a Russell 2000-style
+  universe would test this.
+
+#### 3. The model is essentially trading on three real factors.
+
+Volume + dividend yield + Altman-Z account for **93.4%** of the model's
+explanatory power. That's actually a defensible, interpretable factor
+stack — and it explains why MLA's edge over RBA-BOS-Flow (which weights
+all 5 BOS factors) is real but bounded:
+
+- MLA correctly *down-weights* the placeholder columns (BOS gives them
+  10–20% each by default).
+- MLA *finds non-linear interactions* in volume × dividend yield × Altman-Z
+  that BOS's linear weighted-sum cannot.
+- Net effect: ~+8 pp CAGR lift, with high dispersion.
+
+### Implications
+
+This SHAP run reframes earlier findings:
+
+| Earlier framing | Updated framing |
+|-----------------|-----------------|
+| "5-factor MLA edges 7-factor by 1.5pp on average" | The 7-factor model effectively *is* a 5-factor model, since 2 of the 7 features are constant placeholders. The +1.5pp gap is the contribution of flow signals. |
+| "Flow factors are within noise" | Confirmed by the data — but it's *signal-to-noise* low, not "ignored." Flow factors carry 6.7% of importance combined. |
+| "Adding flow features didn't help" | Roughly accurate, but for the wrong reason. They didn't help because (a) US large-caps are flow-quiet and (b) the labels were 63-day forward returns, possibly mismatched to flow-signal decay. |
+
+### What to do next
+
+- **Wire FmpPitProvider into the training pipeline** and retrain. That
+  unlocks `target_return` and `analyst_sent` as live features. Likely the
+  highest-information experiment available right now.
+- **Test on a small-cap universe** (Russell 2000) where flow signals
+  should carry more weight relative to mechanical liquidity.
+- **Try a 30-day forward-return label** for tighter alignment with the
+  90-day flow lookback.
+
+Reproduce via `py -3.12 scripts/shap_analysis.py`.
+
 ## 5-factor vs 7-factor head-to-head walk-forward (2026-04-27)
 
 Earlier evaluations left an open question: is the 7-factor model's prior
