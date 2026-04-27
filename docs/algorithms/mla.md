@@ -294,6 +294,14 @@ This SHAP run reframes earlier findings:
 - **Wire FmpPitProvider into the training pipeline** and retrain. That
   unlocks `target_return` and `analyst_sent` as live features. Likely the
   highest-information experiment available right now.
+
+  **Status:** Pipeline is wired (commit landing 2026-04-28). The
+  training loop now composes
+  `MergedPitProvider([Edgar, Fmp, InsiderFlow, RetailFlow])`, with FMP
+  gracefully degrading to placeholder values when `TRIO_FMP_KEY` is
+  unset. **One-shot script: `bash scripts/retrain_with_fmp.sh`** —
+  set the env var, run, get fresh artifact + SHAP + gate result.
+
 - **Test on a small-cap universe** (Russell 2000) where flow signals
   should carry more weight relative to mechanical liquidity.
 - **Try a 30-day forward-return label** for tighter alignment with the

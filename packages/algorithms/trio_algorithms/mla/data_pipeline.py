@@ -136,6 +136,7 @@ def build_pit_dataset(
     from trio_backtester.data import fetch_history, fetch_volume_history
     from trio_data_providers import (
         EdgarPitProvider,
+        FmpPitProvider,
         InsiderFlowPitProvider,
         MergedPitProvider,
         RetailFlowPitProvider,
@@ -143,13 +144,19 @@ def build_pit_dataset(
 
     _, prices = fetch_history(universe, fetch_start, fetch_end)
     volumes = fetch_volume_history(universe, fetch_start, fetch_end)
-    # Compose: EDGAR (3 fundamental factors) + insider flow + retail flow.
-    # FMP is intentionally excluded here — its free tier is too thin for a
-    # multi-quarter walk over 28 tickers; placeholders fill target_return +
-    # analyst_sent (matching inference time).
+    # Compose: EDGAR (3 fundamental factors) + FMP (analyst factors) +
+    # insider flow + retail flow.
+    #
+    # FMP is included so target_return + analyst_sent get real values when
+    # TRIO_FMP_KEY is set in the environment. Without the key, FmpPitProvider
+    # gracefully returns None for both factors and the placeholder fallback
+    # below kicks in — no error, no half-trained model. To make those two
+    # features carry real model weight (see SHAP analysis), set the env var
+    # at training time.
     edgar = EdgarPitProvider()
     pit = MergedPitProvider([
         edgar,
+        FmpPitProvider(),
         InsiderFlowPitProvider(edgar_pit=edgar),
         RetailFlowPitProvider(),
     ])
