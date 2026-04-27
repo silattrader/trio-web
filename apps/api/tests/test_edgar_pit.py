@@ -214,6 +214,80 @@ def test_edgar_pit_uses_market_yield_when_prices_supplied(patched_edgar):
     assert market_yield == pytest.approx(0.91 / 150.0 * 100, rel=1e-3)
 
 
+def test_edgar_pit_emits_qv_factors_when_data_available(patched_edgar):
+    """The QV-extension fields (roe, gross_profit_to_assets, debt_to_equity,
+    earnings_yield, book_to_market, fcf_yield) light up when the corresponding
+    XBRL tags are present in the fixture."""
+    from datetime import timedelta
+    facts = patched_edgar["facts_by_cik"]["0000320193"]
+
+    # Add the QV-required tags to the AAPL fixture.
+    def points(records):
+        return [
+            {"val": v, "end": e, "filed": f, "form": form, "fy": 2022, "fp": "FY"}
+            for v, e, f, form in records
+        ]
+    fy23_records = [(99_803, "2022-09-24", "2022-10-28", "10-K")]
+    facts["facts"]["us-gaap"]["NetIncomeLoss"] = {"units": {"USD": points(fy23_records)}}
+    facts["facts"]["us-gaap"]["CostOfRevenue"] = {"units": {"USD": points([
+        (223_546, "2022-09-24", "2022-10-28", "10-K"),
+    ])}}
+    facts["facts"]["us-gaap"]["NetCashProvidedByUsedInOperatingActivities"] = {
+        "units": {"USD": points([(122_151, "2022-09-24", "2022-10-28", "10-K")])}
+    }
+    facts["facts"]["us-gaap"]["PaymentsToAcquirePropertyPlantAndEquipment"] = {
+        "units": {"USD": points([(10_708, "2022-09-24", "2022-10-28", "10-K")])}
+    }
+
+    base = date(2022, 6, 1)
+    prices = {"AAPL": {base + timedelta(days=i): 150.0 for i in range(400)}}
+    volumes = {"AAPL": {base + timedelta(days=i): 1_000_000.0 for i in range(400)}}
+
+    p = EdgarPitProvider()
+    res = p.fetch_as_of(["AAPL"], as_of=date(2023, 6, 1), model="qv",
+                        prices=prices, volumes=volumes)
+    row = res.rows[0]
+
+    # ROE = 99,803 / 90,000 (StockholdersEquity in fixture) × 100 = 110.9%
+    assert row["roe"] is not None and row["roe"] == pytest.approx(110.892, abs=0.01)
+    # Gross profit = 380,000 (Revenues) - 223,546 (COGS) = 156,454
+    # GP/A = 156,454 / 340,000 (Assets) = 0.4602
+    assert row["gross_profit_to_assets"] == pytest.approx(0.4602, abs=0.001)
+    # D/E = 250,000 / 90,000 = 2.778
+    assert row["debt_to_equity"] == pytest.approx(2.778, abs=0.01)
+    # market_cap = 150 × 16M = 2.4B → EY = 110,000 (EBIT) / 2.4B × 100 = 4.583
+    assert row["market_cap"] == pytest.approx(150 * 16_000_000, abs=1)
+    assert row["earnings_yield"] == pytest.approx(110_000 / 2_400_000_000 * 100, abs=0.001)
+    # B/M = 90,000 / 2.4B = 0.0000375
+    assert row["book_to_market"] == pytest.approx(90_000 / 2_400_000_000, abs=1e-6)
+    # FCF = 122,151 - 10,708 = 111,443; FCF/MC = 111,443 / 2.4B × 100
+    assert row["fcf_yield"] == pytest.approx(111_443 / 2_400_000_000 * 100, abs=0.001)
+
+
+def test_edgar_pit_qv_factors_are_none_without_market_cap(patched_edgar):
+    """No prices supplied → market_cap missing → EY/B/M/FCF stay None even
+    if the underlying XBRL data is there."""
+    facts = patched_edgar["facts_by_cik"]["0000320193"]
+    # Add NetIncomeLoss so ROE works (it doesn't need market cap).
+    facts["facts"]["us-gaap"]["NetIncomeLoss"] = {"units": {"USD": [
+        {"val": 50_000, "end": "2022-09-24", "filed": "2022-10-28",
+         "form": "10-K", "fy": 2022, "fp": "FY"},
+    ]}}
+
+    p = EdgarPitProvider()
+    res = p.fetch_as_of(["AAPL"], as_of=date(2023, 6, 1), model="qv")
+    row = res.rows[0]
+    # ROE works (no market cap needed)
+    assert row["roe"] is not None
+    # D/E works (no market cap needed)
+    assert row["debt_to_equity"] is not None
+    # But the market-cap-dependent ones don't.
+    assert row["market_cap"] is None
+    assert row["earnings_yield"] is None
+    assert row["book_to_market"] is None
+    assert row["fcf_yield"] is None
+
+
 def test_edgar_pit_computes_vol_avg_when_volumes_supplied(patched_edgar):
     from datetime import timedelta
     base = date(2023, 1, 1)

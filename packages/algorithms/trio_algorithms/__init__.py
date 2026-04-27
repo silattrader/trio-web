@@ -14,12 +14,23 @@ from .rba.bos_flow import score_bos_flow
 from .rba.four_factor import score_four_factor
 from .rba.mos import score_mos
 from .rba.qv import score_qv
+from .sim import (
+    InstitutionalAgent,
+    MirofishResult,
+    MirofishSimulator,
+    RetailAgent,
+    simulate_shock,
+)
 
 __all__ = [
     "BosFlowWeights",
     "BosWeights",
     "FactorBreakdown",
+    "InstitutionalAgent",
+    "MirofishResult",
+    "MirofishSimulator",
     "MlaScorer",
+    "RetailAgent",
     "PromotionDecision",
     "QvWeights",
     "Recommendation",
@@ -33,4 +44,5 @@ __all__ = [
     "score_mla_v0",
     "score_mos",
     "score_qv",
+    "simulate_shock",
 ]

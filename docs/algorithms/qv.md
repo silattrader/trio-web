@@ -235,6 +235,78 @@ project. Until that lands, QV runs against:
 4. Universe-specific threshold calibration via empirical
    percentile bands instead of hand-set absolute thresholds.
 
+## Three-engine walk-forward head-to-head (2026-04-28)
+
+`scripts/walk_forward_three_engines.py` runs the same rba_pit strategy
+three ways across 6 rolling 6-month OOS windows. Results:
+
+| Window | BOS-Flow | QV | MLA-7 |
+|--------|----------|-----|-------|
+| 2021-H1 (bull leg)     | **+79.0%** | +35.0% | +55.4% |
+| 2021-H2 (peak)         | +55.6% | +61.5% | **+71.8%** |
+| 2022-H1 (rate shock)   | −15.8% | **−45.6%** | −22.8% |
+| 2022-H2 (capitulation) | +34.2% | **+56.9%** | +19.8% |
+| 2023-H1 (bottom-bounce)| +24.7% | +49.0% | **+75.8%** |
+| 2023-H2 (AI rally)     |  +2.3% |  +4.7% | **+16.9%** |
+
+**Aggregate (mean CAGR across windows):**
+- BOS-Flow: +30.0%
+- **QV: +26.9%**
+- MLA-7: +36.2%
+
+**Head-to-head win rates:**
+- QV beats BOS-Flow: **4 of 6 (67%)**
+- QV beats MLA-7: 1 of 6 (17%)
+- QV best of three: 1 of 6 (17%)
+
+### Honest reading — QV is regime-dependent
+
+The result is consistent with decades of factor-investing literature: **value
+strategies have long stretches of underperformance during growth-led regimes,
+then dominate during quality-flight periods** (2022-H2 capitulation here).
+
+QV's regime profile across these 6 windows:
+
+- **Strong**: capitulation / mean-reversion (2022-H2: QV +57% vs MLA +20%)
+- **Weak**: rate-shock / liquidity contractions (2022-H1: QV −46% vs Flow −16%)
+- **Mediocre**: bull legs (2021-H1: QV +35% vs Flow +79%)
+
+The 2022-H1 underperformance (−46% vs Flow's −16%) is particularly telling —
+QV's value-tilt got crushed when interest rates spiked and quality-growth
+names like AAPL/MSFT held better than cheap-and-cyclical names. This is
+expected; the long-run academic case for value rests on cycles where bear
+markets eventually rotate back to fundamentals.
+
+### Implications
+
+1. **QV is not a strict replacement for MLA-7.** Across this universe and
+   period, MLA-7 is the highest-performing single engine (+36.2 mean CAGR).
+   QV's mean lags by ~9 pp; QV beats MLA in only 1 of 6 windows.
+
+2. **QV is complementary.** A 50/50 ensemble of MLA-7 and QV in 2022-H2
+   would have averaged +38.4% CAGR — better than MLA alone (+19.8%) and
+   approaching QV alone (+56.9%). The decorrelation is the value.
+
+3. **QV's win-rate vs BOS-Flow is strong (67%).** If a user wants to choose
+   between rule-based engines, QV is the better default — same governance
+   structure, similar simplicity, but a more explicit theoretical
+   foundation (Greenblatt + Novy-Marx + Graham vs. BOS's hand-tuned blend).
+
+4. **The 2022-H1 outlier deserves further investigation.** A −46% CAGR
+   single-window loss for QV is large enough that the universe selection
+   may matter more than the engine — the curated 28-name basket is heavy
+   on tech/healthcare and light on energy/materials. A more sector-balanced
+   universe might reduce the outlier.
+
+### Reproducible
+
+```
+py -3.12 scripts/walk_forward_three_engines.py
+```
+
+Output goes to stdout; takes ~5–10 min on warm EDGAR + Wikipedia caches.
+First run ~30 min if caches are cold.
+
 ## References
 
 - Greenblatt, J. (2006). *The Little Book That Beats the Market*. Wiley.

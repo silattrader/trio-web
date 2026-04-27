@@ -20,6 +20,7 @@ from trio_algorithms import (
     score_mla_v0,
     score_mos,
     score_qv,
+    simulate_shock,
 )
 from trio_backtester import (
     BacktestRequest,
@@ -174,6 +175,49 @@ class UniverseRequest(BaseModel):
 @app.get("/providers")
 def providers() -> dict:
     return {"providers": list_providers()}
+
+
+class SimulateRequest(BaseModel):
+    ticker: str = Field(..., min_length=1, max_length=20)
+    fundamental_anchor: float = Field(default=1.0, ge=0.1, le=10.0,
+                                      description="1.0 = fairly valued; >1 = overvalued")
+    initial_sentiment_z: float = Field(default=0.0, ge=-5.0, le=10.0,
+                                       description="initial retail attention z-score")
+    n_steps: int = Field(default=30, ge=5, le=200)
+    seed: int = Field(default=42)
+
+
+@app.post("/simulate")
+def simulate(req: SimulateRequest) -> dict:
+    """MIROFISH agent-based shock simulator.
+
+    Two-faction swarm (retail + institutional) projects price action over
+    N steps in response to a fundamental shock. Returns the price path,
+    peak-deviation, and a contagion score in [0, 1].
+
+    This is a v0 scaffold — see docs/algorithms/mirofish.md for the
+    research roadmap (ATLAS-GIC graph, Soros reflexivity, Darwinian
+    weighting). Today it gives interpretable numbers on a single ticker.
+    """
+    result = simulate_shock(
+        ticker=req.ticker,
+        fundamental_anchor=req.fundamental_anchor,
+        initial_sentiment_z=req.initial_sentiment_z,
+        n_steps=req.n_steps,
+        seed=req.seed,
+    )
+    return {
+        "ticker": result.ticker,
+        "n_steps": result.n_steps,
+        "initial_price": result.initial_price,
+        "final_price": round(result.final_price, 2),
+        "price_path": [round(p, 2) for p in result.price_path],
+        "peak_deviation_pct": result.peak_deviation_pct,
+        "fundamental_anchor": result.fundamental_anchor,
+        "institutional_share": result.institutional_share,
+        "contagion_score": result.contagion_score,
+        "warnings": result.warnings,
+    }
 
 
 @app.get("/universes")

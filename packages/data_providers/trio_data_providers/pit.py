@@ -208,6 +208,26 @@ class EdgarPitProvider(PitProvider):
         ("us-gaap", "CommonStockDividendsPerShareCashPaid", "USD/shares", False),
     ]
 
+    # --- QV-engine tags (added 2026-04-28 for the Quality-Value engine) ----
+    # All annual_only=True so we get 10-K full-year figures, not quarterly.
+    _TAGS_NET_INCOME = [
+        ("us-gaap", "NetIncomeLoss", "USD", True),
+        ("us-gaap", "ProfitLoss", "USD", True),
+    ]
+    _TAGS_COST_OF_REVENUE = [
+        ("us-gaap", "CostOfRevenue", "USD", True),
+        ("us-gaap", "CostOfGoodsAndServicesSold", "USD", True),
+        ("us-gaap", "CostOfGoodsSold", "USD", True),
+    ]
+    _TAGS_CFO = [
+        ("us-gaap", "NetCashProvidedByUsedInOperatingActivities", "USD", True),
+        ("us-gaap", "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations", "USD", True),
+    ]
+    _TAGS_CAPEX = [
+        ("us-gaap", "PaymentsToAcquirePropertyPlantAndEquipment", "USD", True),
+        ("us-gaap", "PaymentsToAcquireProductiveAssets", "USD", True),
+    ]
+
     def __init__(self, *, ttl_seconds: int = 24 * 3600) -> None:
         self._ttl = ttl_seconds
         self._ticker_map: dict[str, str] | None = None
@@ -279,11 +299,20 @@ class EdgarPitProvider(PitProvider):
             row: dict[str, Any] = {
                 "ticker": ticker_raw,
                 "name": None,
+                # BOS factors
                 "vol_avg_3m": None,
                 "target_return": None,
                 "analyst_sent": None,
                 "altman_z": None,
                 "dvd_yld_ind": None,
+                # QV factors (added 2026-04-28)
+                "roe": None,
+                "gross_profit_to_assets": None,
+                "debt_to_equity": None,
+                "earnings_yield": None,
+                "book_to_market": None,
+                "fcf_yield": None,
+                "market_cap": None,  # diagnostic
             }
             cik = ticker_map.get(ticker)
             if cik is None:
@@ -368,6 +397,53 @@ class EdgarPitProvider(PitProvider):
             v3m = self._vol_avg_around(vol_series, as_of)
             if v3m is not None:
                 row["vol_avg_3m"] = round(v3m, 1)
+
+            # --- QV-engine factors (Quality-Value 6-factor screen) -----
+            # Pull the four additional XBRL tags QV needs.
+            ni = self._first_available(facts, self._TAGS_NET_INCOME, as_of_iso)
+            cor = self._first_available(facts, self._TAGS_COST_OF_REVENUE, as_of_iso)
+            cfo = self._first_available(facts, self._TAGS_CFO, as_of_iso)
+            capex = self._first_available(facts, self._TAGS_CAPEX, as_of_iso)
+
+            # F1 ROE = NetIncome / Equity × 100
+            if ni is not None and eq is not None and eq.val > 0:
+                row["roe"] = round(100.0 * ni.val / eq.val, 3)
+
+            # F2 Gross Profit / Total Assets
+            if rev is not None and cor is not None and ta is not None and ta.val > 0:
+                gross_profit = rev.val - cor.val
+                if gross_profit > 0:
+                    row["gross_profit_to_assets"] = round(gross_profit / ta.val, 4)
+
+            # F3 Debt/Equity proxy = Total Liabilities / Equity. NOT pure
+            # interest-bearing-debt over equity (XBRL doesn't always tag the
+            # latter cleanly). Documented limit in qv.md.
+            if liab is not None and eq is not None and eq.val > 0:
+                row["debt_to_equity"] = round(liab.val / eq.val, 3)
+
+            # Market-cap dependent factors require both price (forward-filled
+            # at as_of) and reported shares outstanding.
+            market_cap = None
+            if price and shares is not None and shares.val > 0:
+                market_cap = price * shares.val
+                row["market_cap"] = round(market_cap, 2)
+
+            # F4 Earnings Yield = EBIT / Market Cap × 100
+            if market_cap and ebit is not None and market_cap > 0:
+                row["earnings_yield"] = round(100.0 * ebit.val / market_cap, 3)
+
+            # F5 Book / Market = Equity / Market Cap. Keep 6 decimals because
+            # heavily-bought-back tickers like AAPL drive this to ~1e-5 range.
+            if market_cap and eq is not None and market_cap > 0:
+                row["book_to_market"] = round(eq.val / market_cap, 6)
+
+            # F6 FCF Yield = (CFO - |CapEx|) / Market Cap × 100
+            # CapEx is reported as a positive cash outflow under
+            # PaymentsToAcquirePropertyPlantAndEquipment; subtract abs to be
+            # robust to issuer sign-convention drift.
+            if market_cap and cfo is not None and capex is not None and market_cap > 0:
+                fcf = cfo.val - abs(capex.val)
+                row["fcf_yield"] = round(100.0 * fcf / market_cap, 3)
 
             rows.append(row)
 
