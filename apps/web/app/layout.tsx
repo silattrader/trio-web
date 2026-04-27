@@ -10,8 +10,15 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body>
+    <html lang="en" suppressHydrationWarning>
+      {/*
+        suppressHydrationWarning here silences the React hydration warning
+        when browser extensions (Grammarly, ColorZilla, etc.) inject
+        attributes like data-gr-ext-installed onto <body> before React
+        hydrates. This is the Next.js-documented fix; it does NOT silence
+        real hydration errors in our own components.
+      */}
+      <body suppressHydrationWarning>
         <header className="border-b border-slate-200 bg-white">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
             <div>
