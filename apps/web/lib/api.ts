@@ -55,7 +55,7 @@ export interface ScoreResponse {
   warnings: string[];
 }
 
-export type ModelId = "bos" | "bos_flow" | "mos" | "four_factor" | "mla_v0";
+export type ModelId = "bos" | "bos_flow" | "qv" | "mos" | "four_factor" | "mla_v0";
 
 export interface BosWeights {
   f1_volume: number;

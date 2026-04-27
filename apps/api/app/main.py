@@ -19,6 +19,7 @@ from trio_algorithms import (
     score_four_factor,
     score_mla_v0,
     score_mos,
+    score_qv,
 )
 from trio_backtester import (
     BacktestRequest,
@@ -47,7 +48,7 @@ from trio_data_providers._request_keys import (
     reset_request_keys,
 )
 
-ModelName = Literal["bos", "bos_flow", "mos", "four_factor", "mla_v0"]
+ModelName = Literal["bos", "bos_flow", "qv", "mos", "four_factor", "mla_v0"]
 
 app = FastAPI(
     title="TRIO Web API",
@@ -127,6 +128,7 @@ def list_models() -> dict:
         "rba": [
             {"id": "bos", "version": "rba-bos-1.0.0", "label": "5-Factor Buy-or-Sell"},
             {"id": "bos_flow", "version": "rba-bos-flow-1.0.0", "label": "7-Factor BOS-Flow (BOS + insider + retail)"},
+            {"id": "qv", "version": "rba-qv-1.0.0", "label": "Quality-Value (Greenblatt + Novy-Marx)"},
             {"id": "mos", "version": "rba-mos-1.0.0", "label": "Margin-of-Safety (Graham)"},
             {"id": "four_factor", "version": "rba-four-factor-1.0.0", "label": "4-Factor Legacy"},
         ],
@@ -150,6 +152,10 @@ def score(
     if model == "bos_flow":
         return score_bos_flow(
             req.rows, universe=req.universe, weights=req.bos_flow_weights,
+        )
+    if model == "qv":
+        return score_qv(
+            req.rows, universe=req.universe, weights=req.qv_weights,
         )
     if model == "mos":
         return score_mos(req.rows, universe=req.universe)

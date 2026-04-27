@@ -2,6 +2,7 @@ from .contracts import (
     BosFlowWeights,
     BosWeights,
     FactorBreakdown,
+    QvWeights,
     Recommendation,
     ScoreRequest,
     ScoreResponse,
@@ -12,6 +13,7 @@ from .rba.bos import score_bos
 from .rba.bos_flow import score_bos_flow
 from .rba.four_factor import score_four_factor
 from .rba.mos import score_mos
+from .rba.qv import score_qv
 
 __all__ = [
     "BosFlowWeights",
@@ -19,6 +21,7 @@ __all__ = [
     "FactorBreakdown",
     "MlaScorer",
     "PromotionDecision",
+    "QvWeights",
     "Recommendation",
     "ScoreRequest",
     "ScoreResponse",
@@ -29,4 +32,5 @@ __all__ = [
     "score_four_factor",
     "score_mla_v0",
     "score_mos",
+    "score_qv",
 ]

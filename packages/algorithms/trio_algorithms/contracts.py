@@ -81,6 +81,52 @@ class BosWeights(BaseModel):
         )
 
 
+class QvWeights(BaseModel):
+    """Per-factor weights for the Quality-Value (QV) engine — 6 factors.
+
+    Half quality / half value. Defaults reflect the empirical finding that
+    Greenblatt's earnings yield and Novy-Marx's gross profitability are the
+    strongest single-factor signals in their respective dimensions:
+
+      Quality (50%):
+        F1 roe                    0.15
+        F2 gross_profit_to_assets 0.20  ← Novy-Marx (2013)
+        F3 debt_to_equity         0.15  (lower = better — banding is reversed)
+
+      Value (50%):
+        F4 earnings_yield         0.20  ← Greenblatt Magic Formula (2006)
+        F5 book_to_market         0.15  ← Fama-French (1992)
+        F6 fcf_yield              0.15  ← cash-quality value
+
+    Sum is normalised to 1.0 before scoring; UI can pass raw drag values.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    f1_roe: float = Field(default=0.15, ge=0)
+    f2_gross_profit_to_assets: float = Field(default=0.20, ge=0)
+    f3_debt_to_equity: float = Field(default=0.15, ge=0)
+    f4_earnings_yield: float = Field(default=0.20, ge=0)
+    f5_book_to_market: float = Field(default=0.15, ge=0)
+    f6_fcf_yield: float = Field(default=0.15, ge=0)
+
+    def normalised(self) -> "QvWeights":
+        total = (
+            self.f1_roe + self.f2_gross_profit_to_assets + self.f3_debt_to_equity
+            + self.f4_earnings_yield + self.f5_book_to_market + self.f6_fcf_yield
+        )
+        if total <= 0:
+            return QvWeights()
+        return QvWeights(
+            f1_roe=self.f1_roe / total,
+            f2_gross_profit_to_assets=self.f2_gross_profit_to_assets / total,
+            f3_debt_to_equity=self.f3_debt_to_equity / total,
+            f4_earnings_yield=self.f4_earnings_yield / total,
+            f5_book_to_market=self.f5_book_to_market / total,
+            f6_fcf_yield=self.f6_fcf_yield / total,
+        )
+
+
 class BosFlowWeights(BaseModel):
     """Per-factor weights for the BOS-Flow engine (7 factors).
 
@@ -134,6 +180,10 @@ class ScoreRequest(BaseModel):
     bos_flow_weights: BosFlowWeights | None = Field(
         default=None,
         description="Optional override for BOS-Flow factor weights. Ignored by other models.",
+    )
+    qv_weights: QvWeights | None = Field(
+        default=None,
+        description="Optional override for QV (Quality-Value) factor weights. Ignored by other models.",
     )
 
 

@@ -58,6 +58,17 @@ const ALIASES: Record<ModelId, Record<string, string>> = {
     RETAIL_FLOW: "retail_flow",
     LONG_COMP_NAME: "name",
   },
+  // QV: Quality-Value 6-factor screen (Greenblatt + Novy-Marx + Graham).
+  qv: {
+    RETURN_COM_EQY: "roe",                   // Bloomberg ROE %
+    GROSS_PROFIT_TO_ASSETS: "gross_profit_to_assets",
+    TOT_DEBT_TO_TOT_EQY: "debt_to_equity",   // Bloomberg D/E
+    EARNINGS_YIELD: "earnings_yield",        // EBIT/MarketCap %
+    BOOK_VAL_PER_SH_TO_PRICE: "book_to_market",  // alias for B/M
+    BOOK_TO_MARKET: "book_to_market",
+    FCF_YIELD: "fcf_yield",
+    LONG_COMP_NAME: "name",
+  },
 };
 
 export function parseCsv(text: string, model: ModelId): Record<string, unknown>[] {
