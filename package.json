@@ -1,0 +1,16 @@
+{
+  "name": "trio-web-tooling",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Top-level tooling for the TRIO Web monorepo (deck builder, demo recorder). The web app lives in apps/web and has its own package.json.",
+  "scripts": {
+    "build:pitch": "node scripts/build_pitch_pptx.js",
+    "build:demo": "bash scripts/build_demo_mp4.sh",
+    "record:demo": "node scripts/record_demo.js"
+  },
+  "devDependencies": {
+    "ffmpeg-static": "^5.2.0",
+    "playwright": "^1.51.0",
+    "pptxgenjs": "^3.12.0"
+  }
+}

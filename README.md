@@ -9,6 +9,7 @@
 [![Decision support only — not investment advice](https://img.shields.io/badge/disclaimer-not_investment_advice-amber)](#disclaimer)
 
 **Live demo:** _coming soon — see [docs/DEPLOY.md](docs/DEPLOY.md)_
+**Video walkthrough:** [docs/demo.mp4](docs/demo.mp4) (53 s · 1280×720 · captioned)
 **Open source:** [github.com/silattrader/trio-web](https://github.com/silattrader/trio-web) (public, MIT)
 
 ---

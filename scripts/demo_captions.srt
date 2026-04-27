@@ -1,0 +1,31 @@
+1
+00:00:00,500 --> 00:00:05,500
+TRIO Web · transparent factor scoring · open source
+
+2
+00:00:06,000 --> 00:00:12,500
+"Try sample" → 8 KLCI tickers ranked in 1 second
+
+3
+00:00:13,000 --> 00:00:21,500
+Switch model → BOS-Flow · 7-factor with insider + retail flow
+
+4
+00:00:22,000 --> 00:00:29,500
+Click any row → factor radar · per-factor breakdown
+
+5
+00:00:30,000 --> 00:00:37,500
+Drag any weight slider → watchlist re-ranks live (350 ms)
+
+6
+00:00:38,000 --> 00:00:43,500
+Curated universes · 28 demo · S&P 500 top 100 · KLCI 30
+
+7
+00:00:44,000 --> 00:00:50,500
+Hosted backtester · SMA + RBA-snapshot + RBA-PIT · walk-forward verified
+
+8
+00:00:51,000 --> 00:00:53,000
+github.com/silattrader/trio-web
